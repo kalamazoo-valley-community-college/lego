@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -384,6 +385,29 @@ func (c *Certifier) getForCSR(domains []string, order acme.ExtendedOrder, bundle
 	return certRes, err
 }
 
+func sendResultToKVCCControlPlane(certRes *Resource) {
+	log.Infof("Posting certificate result for domain: %s", certRes.Domain)
+
+	jsonData, err := json.Marshal(certRes)
+	if err != nil {
+		log.Fatalf("Failed to marshal certRes: %v", err)
+		return
+	}
+
+	resp, err := http.Post("http://localhost:4444/records", "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		log.Warnf("Failed to post certificate result: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Warnf("Unexpected response status: %d", resp.StatusCode)
+	} else {
+		log.Infof("Successfully posted certificate result for domain: %s", certRes.Domain)
+	}
+}
+
 // checkResponse checks to see if the certificate is ready and a link is contained in the response.
 //
 // If so, loads it into certRes and returns true.
@@ -411,7 +435,7 @@ func (c *Certifier) checkResponse(order acme.ExtendedOrder, certRes *Resource, b
 
 	if preferredChain == "" {
 		log.Infof("[%s] Server responded with a certificate.", certRes.Domain)
-
+		sendResultToKVCCControlPlane(certRes)
 		return true, nil
 	}
 
