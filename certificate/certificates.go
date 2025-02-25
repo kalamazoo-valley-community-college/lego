@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -385,7 +386,7 @@ func (c *Certifier) getForCSR(domains []string, order acme.ExtendedOrder, bundle
 	return certRes, err
 }
 
-func sendResultToKVCCControlPlane(certRes *Resource) {
+func (c *Certifier) sendResultToKVCCControlPlane(certRes *Resource) {
 	log.Infof("Posting certificate result for domain: %s", certRes.Domain)
 
 	jsonData, err := json.Marshal(certRes)
@@ -394,7 +395,15 @@ func sendResultToKVCCControlPlane(certRes *Resource) {
 		return
 	}
 
-	resp, err := http.Post("http://localhost:4444/records", "application/json", bytes.NewBuffer(jsonData))
+	parsedURL, err := url.Parse(certRes.CertURL)
+	if err != nil {
+		fmt.Println("Error parsing URL:", err)
+		return
+	}
+
+	reporting_url := "https://" + parsedURL.Host + ":4444/records"
+
+	resp, err := c.core.HTTPClient.Post(reporting_url, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		log.Warnf("Failed to post certificate result: %v", err)
 		return
@@ -434,8 +443,9 @@ func (c *Certifier) checkResponse(order acme.ExtendedOrder, certRes *Resource, b
 	certRes.CertStableURL = order.Certificate
 
 	if preferredChain == "" {
+		fmt.Printf("HERE IS THE CERTIFICATE URL: %v", certRes.CertURL)
 		log.Infof("[%s] Server responded with a certificate.", certRes.Domain)
-		sendResultToKVCCControlPlane(certRes)
+		c.sendResultToKVCCControlPlane(certRes)
 		return true, nil
 	}
 
