@@ -23,6 +23,7 @@ func allDNSCodes() string {
 		"azuredns",
 		"bindman",
 		"bluecat",
+		"bookmyname",
 		"brandit",
 		"bunny",
 		"checkdomain",
@@ -94,6 +95,7 @@ func allDNSCodes() string {
 		"mailinabox",
 		"manageengine",
 		"metaname",
+		"metaregistrar",
 		"mijnhost",
 		"mittwald",
 		"myaddr",
@@ -396,6 +398,27 @@ func displayDNSHelp(w io.Writer, name string) error {
 
 		ew.writeln()
 		ew.writeln(`More information: https://go-acme.github.io/lego/dns/bluecat`)
+
+	case "bookmyname":
+		// generated from: providers/dns/bookmyname/bookmyname.toml
+		ew.writeln(`Configuration for BookMyName.`)
+		ew.writeln(`Code:	'bookmyname'`)
+		ew.writeln(`Since:	'v4.23.0'`)
+		ew.writeln()
+
+		ew.writeln(`Credentials:`)
+		ew.writeln(`	- "BOOKMYNAME_PASSWORD":	Password`)
+		ew.writeln(`	- "BOOKMYNAME_USERNAME":	Username`)
+		ew.writeln()
+
+		ew.writeln(`Additional Configuration:`)
+		ew.writeln(`	- "BOOKMYNAME_HTTP_TIMEOUT":	API request timeout in seconds (Default: 30)`)
+		ew.writeln(`	- "BOOKMYNAME_POLLING_INTERVAL":	Time between DNS propagation check in seconds (Default: 2)`)
+		ew.writeln(`	- "BOOKMYNAME_PROPAGATION_TIMEOUT":	Maximum waiting time for DNS propagation in seconds (Default: 60)`)
+		ew.writeln(`	- "BOOKMYNAME_TTL":	The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)`)
+
+		ew.writeln()
+		ew.writeln(`More information: https://go-acme.github.io/lego/dns/bookmyname`)
 
 	case "brandit":
 		// generated from: providers/dns/brandit/brandit.toml
@@ -1901,6 +1924,26 @@ func displayDNSHelp(w io.Writer, name string) error {
 
 		ew.writeln()
 		ew.writeln(`More information: https://go-acme.github.io/lego/dns/metaname`)
+
+	case "metaregistrar":
+		// generated from: providers/dns/metaregistrar/metaregistrar.toml
+		ew.writeln(`Configuration for Metaregistrar.`)
+		ew.writeln(`Code:	'metaregistrar'`)
+		ew.writeln(`Since:	'v4.23.0'`)
+		ew.writeln()
+
+		ew.writeln(`Credentials:`)
+		ew.writeln(`	- "METAREGISTRAR_API_TOKEN":	The API token`)
+		ew.writeln()
+
+		ew.writeln(`Additional Configuration:`)
+		ew.writeln(`	- "METAREGISTRAR_HTTP_TIMEOUT":	API request timeout in seconds (Default: 30)`)
+		ew.writeln(`	- "METAREGISTRAR_POLLING_INTERVAL":	Time between DNS propagation check in seconds (Default: 2)`)
+		ew.writeln(`	- "METAREGISTRAR_PROPAGATION_TIMEOUT":	Maximum waiting time for DNS propagation in seconds (Default: 60)`)
+		ew.writeln(`	- "METAREGISTRAR_TTL":	The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)`)
+
+		ew.writeln()
+		ew.writeln(`More information: https://go-acme.github.io/lego/dns/metaregistrar`)
 
 	case "mijnhost":
 		// generated from: providers/dns/mijnhost/mijnhost.toml

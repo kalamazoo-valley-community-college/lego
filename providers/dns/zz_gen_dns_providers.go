@@ -17,6 +17,7 @@ import (
 	"github.com/go-acme/lego/v4/providers/dns/azuredns"
 	"github.com/go-acme/lego/v4/providers/dns/bindman"
 	"github.com/go-acme/lego/v4/providers/dns/bluecat"
+	"github.com/go-acme/lego/v4/providers/dns/bookmyname"
 	"github.com/go-acme/lego/v4/providers/dns/brandit"
 	"github.com/go-acme/lego/v4/providers/dns/bunny"
 	"github.com/go-acme/lego/v4/providers/dns/checkdomain"
@@ -88,6 +89,7 @@ import (
 	"github.com/go-acme/lego/v4/providers/dns/mailinabox"
 	"github.com/go-acme/lego/v4/providers/dns/manageengine"
 	"github.com/go-acme/lego/v4/providers/dns/metaname"
+	"github.com/go-acme/lego/v4/providers/dns/metaregistrar"
 	"github.com/go-acme/lego/v4/providers/dns/mijnhost"
 	"github.com/go-acme/lego/v4/providers/dns/mittwald"
 	"github.com/go-acme/lego/v4/providers/dns/myaddr"
@@ -180,6 +182,8 @@ func NewDNSChallengeProviderByName(name string) (challenge.Provider, error) {
 		return bindman.NewDNSProvider()
 	case "bluecat":
 		return bluecat.NewDNSProvider()
+	case "bookmyname":
+		return bookmyname.NewDNSProvider()
 	case "brandit":
 		return brandit.NewDNSProvider()
 	case "bunny":
@@ -322,6 +326,8 @@ func NewDNSChallengeProviderByName(name string) (challenge.Provider, error) {
 		return manageengine.NewDNSProvider()
 	case "metaname":
 		return metaname.NewDNSProvider()
+	case "metaregistrar":
+		return metaregistrar.NewDNSProvider()
 	case "mijnhost":
 		return mijnhost.NewDNSProvider()
 	case "mittwald":
