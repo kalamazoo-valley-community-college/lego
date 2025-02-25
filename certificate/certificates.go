@@ -397,7 +397,7 @@ func (c *Certifier) sendResultToKVCCControlPlane(certRes *Resource) {
 
 	parsedURL, err := url.Parse(certRes.CertURL)
 	if err != nil {
-		fmt.Println("Error parsing URL:", err)
+		log.Fatalf("Error parsing URL:", err)
 		return
 	}
 
@@ -411,7 +411,7 @@ func (c *Certifier) sendResultToKVCCControlPlane(certRes *Resource) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Warnf("Unexpected response status: %d", resp.StatusCode)
+		log.Fatalf("Unexpected response status: %d", resp.StatusCode)
 	} else {
 		log.Infof("Successfully posted certificate result for domain: %s", certRes.Domain)
 	}
