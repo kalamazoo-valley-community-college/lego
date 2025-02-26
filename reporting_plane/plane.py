@@ -2,6 +2,7 @@ import smtplib
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
+from pathlib import Path
 
 import aiosqlite
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -19,6 +20,7 @@ DEFAULT_DURATION_SECS = DEFAULT_DURATION_DAYS * 86400
 DEFAULT_RENEWAL_DAYS = 2 * DEFAULT_DURATION_DAYS // 3
 DEFAULT_RENEWAL_SECS = DEFAULT_DURATION_DAYS * 86400
 
+HTML = Path("plane.html").read_text()
 
 # Create db on startup
 @asynccontextmanager
@@ -112,75 +114,7 @@ async def create_record(request: Request):
 
 @app.get("/", response_class=HTMLResponse)
 async def read_spreadsheet():
-    return """
-    <html>
-    <head>
-        <style>
-            .red { color: red; }
-            .orange { color: orange; }
-            .green { color: green; }
-            table { width: 100%; border-collapse: collapse; }
-            th, td { border: 1px solid black; padding: 8px; text-align: left; }
-        </style>
-    </head>
-    <body>
-        <h1>Host Records</h1>
-        <table id="spreadsheet">
-            <thead>
-                <tr>
-                    <th>Hostname</th>
-                    <th>Most Recent Record</th>
-                    <th>Next Expected Renewal</th>
-                </tr>
-            </thead>
-            <tbody>
-                <!-- Data will be inserted here -->
-            </tbody>
-        </table>
-
-        <script>
-            async function fetchData() {
-                const response = await fetch('/hosts');
-                const data = await response.json();
-                const tableBody = document.querySelector("#spreadsheet tbody");
-
-                data.forEach(row => {
-                    const tr = document.createElement("tr");
-                    const hostnameCell = document.createElement("td");
-                    hostnameCell.textContent = row.hostname;
-
-                    const recordCell = document.createElement("td");
-                    recordCell.textContent = row.most_recent_record;
-
-                    const renewalCell = document.createElement("td");
-                    renewalCell.textContent = row.next_expected_renewal;
-
-                    const lastRecordDate = new Date(row.most_recent_record);
-                    const expectedRenewalDate = new Date(row.next_expected_renewal);
-                    const now = new Date();
-
-                    if (now > expectedRenewalDate) {
-                        if ((now - lastRecordDate) > row.duration * 24 * 60 * 60 * 1000) {
-                            recordCell.classList.add("red");  // Expired
-                        } else {
-                            recordCell.classList.add("orange");  // Didn't renew but not expired
-                        }
-                    } else {
-                        recordCell.classList.add("green");  // Healthy
-                    }
-
-                    tr.appendChild(hostnameCell);
-                    tr.appendChild(recordCell);
-                    tr.appendChild(renewalCell);
-                    tableBody.appendChild(tr);
-                });
-            }
-            fetchData();
-        </script>
-    </body>
-</html>
-"""
-
+    return HTML
 
 @app.get("/hosts")
 async def get_hosts():

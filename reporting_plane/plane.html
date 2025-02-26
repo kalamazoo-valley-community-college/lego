@@ -1,0 +1,156 @@
+<html>
+<head>
+    <style>
+        .red { color: red; }
+        .orange { color: orange; }
+        .green { color: green; }
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        th, td { border: 1px solid black; padding: 8px; text-align: left; position: relative; }
+        th { cursor: pointer; white-space: nowrap; background-color: #555; color: white; }
+        .arrow {
+            position: absolute;
+            right: 8px;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+        /* Alternating row colors */
+        tbody tr:nth-child(even) {
+            background-color: #f2f2f2; /* Light grey for even rows */
+        }
+        tbody tr:nth-child(odd) {
+            background-color: #ffffff; /* White for odd rows */
+        }
+        /* Center header text and date */
+        .header-container {
+            text-align: center;
+        }
+        .header-container h1 {
+            margin: 0;
+        }
+        .header-container h2 {
+            margin-top: 5px;
+            font-size: 1.2em;
+        }
+    </style>
+</head>
+<body>
+    <div class="header-container">
+        <h1>Certificate Status Report</h1>
+        <h2 id="date-time"></h2>
+    </div>
+    <table id="spreadsheet">
+        <thead>
+            <tr>
+                <th onclick="sortTable(0, this)">Hostname <span class="arrow"></span></th>
+                <th onclick="sortTable(1, this)">Most Recent Renewal <span class="arrow"></span></th>
+                <th onclick="sortTable(2, this)">Next Expected Renewal <span class="arrow"></span></th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Data will be inserted here -->
+        </tbody>
+    </table>
+
+    <script>
+        // Function to set the date and time in the heading
+        function updateDateTime() {
+            const now = new Date();
+            
+            // Format date as YYYY-MM-DD
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            
+            // Format time as HH:MM:SS
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            
+            const formattedDateTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+            
+            document.getElementById('date-time').textContent = formattedDateTime;
+        }
+
+        // Call the updateDateTime function when the page loads
+        updateDateTime();
+
+        async function fetchData() {
+            const response = await fetch('/hosts');
+            const data = await response.json();
+            const tableBody = document.querySelector("#spreadsheet tbody");
+
+            data.forEach(row => {
+                const tr = document.createElement("tr");
+                const hostnameCell = document.createElement("td");
+                hostnameCell.textContent = row.hostname;
+
+                const recordCell = document.createElement("td");
+                recordCell.textContent = row.most_recent_record;
+
+                const renewalCell = document.createElement("td");
+                renewalCell.textContent = row.next_expected_renewal;
+
+                const lastRecordDate = new Date(row.most_recent_record);
+                const expectedRenewalDate = new Date(row.next_expected_renewal);
+                const now = new Date();
+
+                let rowClass = ""; // This will hold the color class for the row
+
+                if (now > expectedRenewalDate) {
+                    if ((now - lastRecordDate) > row.duration * 24 * 60 * 60 * 1000) {
+                        rowClass = "red";  // Expired
+                    } else {
+                        rowClass = "orange";  // Didn't renew but not expired
+                    }
+                } else {
+                    rowClass = "green";  // Healthy
+                }
+
+                // Apply the same color to all cells in the row
+                tr.classList.add(rowClass);
+                tr.appendChild(hostnameCell);
+                tr.appendChild(recordCell);
+                tr.appendChild(renewalCell);
+                tableBody.appendChild(tr);
+            });
+
+            // Sort by Most Recent Record (column index 1) in ascending order (oldest first)
+            sortTable(1, document.querySelectorAll("th")[1], true);
+        }
+        fetchData();
+
+        function sortTable(columnIndex, th, initial = false) {
+            const table = document.getElementById("spreadsheet");
+            const tbody = table.querySelector("tbody");
+            const rows = Array.from(tbody.rows);
+            const isDateColumn = columnIndex !== 0;
+
+            // Reversed order for the initial sort (oldest first)
+            let sortOrder = initial ? 1 : th.classList.contains("asc") ? -1 : 1;
+
+            rows.sort((a, b) => {
+                let aText = a.cells[columnIndex].textContent.trim();
+                let bText = b.cells[columnIndex].textContent.trim();
+
+                if (isDateColumn) {
+                    return (new Date(aText) - new Date(bText)) * sortOrder;
+                } else {
+                    return aText.localeCompare(bText) * sortOrder;
+                }
+            });
+
+            tbody.innerHTML = "";
+            rows.forEach(row => tbody.appendChild(row));
+
+            document.querySelectorAll("th").forEach(header => {
+                header.classList.remove("asc", "desc");
+                header.querySelector(".arrow").textContent = "";
+            });
+
+            th.classList.toggle("asc", sortOrder === 1);
+            th.classList.toggle("desc", sortOrder === -1);
+            th.querySelector(".arrow").textContent = sortOrder === 1 ? "↑" : "↓";
+        }
+    </script>
+</body>
+</html>
