@@ -1,4 +1,3 @@
-<html>
 <head>
     <style>
         .red { color: red; }
@@ -13,24 +12,11 @@
             font-weight: bold;
             font-size: 1.2em;
         }
-        /* Alternating row colors */
-        tbody tr:nth-child(even) {
-            background-color: #f2f2f2; /* Light grey for even rows */
-        }
-        tbody tr:nth-child(odd) {
-            background-color: #ffffff; /* White for odd rows */
-        }
-        /* Center header text and date */
-        .header-container {
-            text-align: center;
-        }
-        .header-container h1 {
-            margin: 0;
-        }
-        .header-container h2 {
-            margin-top: 5px;
-            font-size: 1.2em;
-        }
+        tbody tr:nth-child(even) { background-color: #f2f2f2; }
+        tbody tr:nth-child(odd) { background-color: #ffffff; }
+        .header-container { text-align: center; }
+        .header-container h1 { margin: 0; }
+        .header-container h2 { margin-top: 5px; font-size: 1.2em; }
     </style>
 </head>
 <body>
@@ -44,6 +30,7 @@
                 <th onclick="sortTable(0, this)">Hostname <span class="arrow"></span></th>
                 <th onclick="sortTable(1, this)">Most Recent Renewal <span class="arrow"></span></th>
                 <th onclick="sortTable(2, this)">Next Expected Renewal <span class="arrow"></span></th>
+                <th onclick="sortTable(3, this)">Provider <span class="arrow"></span></th>
             </tr>
         </thead>
         <tbody>
@@ -52,7 +39,6 @@
     </table>
 
     <script>
-        // Function to set the date and time in the heading
         function updateDateTime() {
             const now = new Date();
             
@@ -90,31 +76,25 @@
                 const renewalCell = document.createElement("td");
                 renewalCell.textContent = row.next_expected_renewal;
 
+                const providerCell = document.createElement("td");
+                providerCell.textContent = row.provider; // Default to 'Unknown' if missing
+
                 const lastRecordDate = new Date(row.most_recent_record);
                 const expectedRenewalDate = new Date(row.next_expected_renewal);
                 const now = new Date();
 
-                let rowClass = ""; // This will hold the color class for the row
-
+                let rowClass = "";
                 if (now > expectedRenewalDate) {
-                    if ((now - lastRecordDate) > row.duration * 24 * 60 * 60 * 1000) {
-                        rowClass = "red";  // Expired
-                    } else {
-                        rowClass = "orange";  // Didn't renew but not expired
-                    }
+                    rowClass = (now - lastRecordDate) > row.duration * 86400000 ? "red" : "orange";
                 } else {
-                    rowClass = "green";  // Healthy
+                    rowClass = "green";
                 }
 
-                // Apply the same color to all cells in the row
                 tr.classList.add(rowClass);
-                tr.appendChild(hostnameCell);
-                tr.appendChild(recordCell);
-                tr.appendChild(renewalCell);
+                tr.append(hostnameCell, recordCell, renewalCell, providerCell);
                 tableBody.appendChild(tr);
             });
 
-            // Sort by Most Recent Record (column index 1) in ascending order (oldest first)
             sortTable(1, document.querySelectorAll("th")[1], true);
         }
         fetchData();
@@ -123,20 +103,16 @@
             const table = document.getElementById("spreadsheet");
             const tbody = table.querySelector("tbody");
             const rows = Array.from(tbody.rows);
-            const isDateColumn = columnIndex !== 0;
+            const isDateColumn = columnIndex === 1 || columnIndex === 2;
 
-            // Reversed order for the initial sort (oldest first)
             let sortOrder = initial ? 1 : th.classList.contains("asc") ? -1 : 1;
 
             rows.sort((a, b) => {
                 let aText = a.cells[columnIndex].textContent.trim();
                 let bText = b.cells[columnIndex].textContent.trim();
 
-                if (isDateColumn) {
-                    return (new Date(aText) - new Date(bText)) * sortOrder;
-                } else {
-                    return aText.localeCompare(bText) * sortOrder;
-                }
+                if (isDateColumn) return (new Date(aText) - new Date(bText)) * sortOrder;
+                return aText.localeCompare(bText) * sortOrder;
             });
 
             tbody.innerHTML = "";
@@ -153,4 +129,3 @@
         }
     </script>
 </body>
-</html>

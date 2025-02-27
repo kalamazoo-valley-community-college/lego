@@ -4,3 +4,6 @@
 .vscode/
 dist/
 builds/
+reporting_plane/build/*
+**.db
+cmd/lego/lego

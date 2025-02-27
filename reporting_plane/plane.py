@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from pathlib import Path
+from urllib.parse import urlparse
 
 import aiosqlite
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -22,6 +23,7 @@ DEFAULT_RENEWAL_SECS = DEFAULT_DURATION_DAYS * 86400
 
 HTML = Path("plane.html").read_text()
 
+
 # Create db on startup
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -29,7 +31,7 @@ async def lifespan(app: FastAPI):
         await db.execute("""
         CREATE TABLE IF NOT EXISTS hosts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            hostname TEXT,
+            hostname TEXT UNIQUE,
             duration INTEGER
         )""")
 
@@ -38,6 +40,7 @@ async def lifespan(app: FastAPI):
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             hostname TEXT,
             datetime DATETIME,
+            provider TEXT,
             FOREIGN KEY (hostname) REFERENCES hosts (hostname)
         )""")
 
@@ -98,16 +101,22 @@ async def create_record(request: Request):
         raise Exception("Received a record that did not contain a hostname.")
     hostname = body["domain"]
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    parsedUrl = urlparse(body["certUrl"])
+    parsedHost = parsedUrl.hostname
     async with aiosqlite.connect("app.db") as db:
         # sqlite does not handle insertion cascades in the normal way, so insert or ignore
         await db.execute(
-            "INSERT OR IGNORE INTO hosts (hostname, duration) VALUES (?, ?)",
+            """
+            INSERT INTO hosts (hostname, duration) VALUES (?, ?)
+            ON CONFLICT(hostname) DO UPDATE SET duration = 
+                CASE WHEN excluded.duration != hosts.duration THEN excluded.duration ELSE hosts.duration END
+            """,
             (hostname, 15),  # Default duration days for new hosts
-            # SCHEDULE YOUR ACME JOB FOR 2/3 THIS VALUE
         )
+
         await db.execute(
-            "INSERT INTO records (hostname, datetime) VALUES (?, ?)",
-            (hostname, current_time),
+            "INSERT INTO records (hostname, datetime, provider) VALUES (?, ?, ?)",
+            (hostname, current_time, parsedHost),
         )
         await db.commit()
 
@@ -116,11 +125,12 @@ async def create_record(request: Request):
 async def read_spreadsheet():
     return HTML
 
+
 @app.get("/hosts")
 async def get_hosts():
     async with aiosqlite.connect("app.db") as db:
         query = """
-        SELECT DISTINCT h.hostname, h.duration, r.datetime
+        SELECT DISTINCT h.hostname, h.duration, r.datetime, r.provider
         FROM hosts h
         LEFT JOIN records r ON h.hostname = r.hostname
         WHERE r.datetime = (SELECT MAX(datetime) FROM records WHERE hostname = h.hostname)
@@ -130,7 +140,7 @@ async def get_hosts():
 
     hosts = []
     for row in rows:
-        hostname, duration_days, most_recent = row[0], row[1], row[2]
+        hostname, duration_days, most_recent, provider = row[0], row[1], row[2], row[3]
 
         if most_recent:
             most_recent_dt = datetime.strptime(most_recent, "%Y-%m-%d %H:%M:%S")
@@ -142,13 +152,19 @@ async def get_hosts():
             )
         else:
             next_expected_renewal_str = "N/A"
-
+        if provider.endswith("kvcc.edu"):
+            provider = "KVCC"
+        elif provider.endswith("letsencrypt.org"):
+            provider = "LetsEncrypt"
+        else:
+            provider = f"Unknown - {provider}"
         hosts.append(
             {
                 "hostname": hostname,
                 "duration": duration_days,
                 "most_recent_record": most_recent,
                 "next_expected_renewal": next_expected_renewal_str,
+                "provider": provider,
             }
         )
 
@@ -158,4 +174,13 @@ async def get_hosts():
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=4444)
+    uvicorn.run(app, host="0.0.0.0", port=8080)
+    """import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--port")
+    parser.add_argument("--certfile", required=True)
+    parser.add_argument("--keyfile", required=True)
+    args = parser.parse_args()
+    if args.port is None:
+        args.port = 443
+    uvicorn.run(app, host="0.0.0.0", port=int(args.port), ssl_keyfile=args.keyfile, ssl_certfile=args.certfile)"""
