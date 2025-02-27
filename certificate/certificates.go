@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -395,13 +394,7 @@ func (c *Certifier) sendResultToKVCCControlPlane(certRes *Resource) {
 		return
 	}
 
-	parsedURL, err := url.Parse(certRes.CertURL)
-	if err != nil {
-		log.Fatalf("Error parsing URL:", err)
-		return
-	}
-
-	reporting_url := "https://" + parsedURL.Host + ":4444/records"
+	reporting_url := "https://smallstep.kvcc.edu/records"
 
 	resp, err := c.core.HTTPClient.Post(reporting_url, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
