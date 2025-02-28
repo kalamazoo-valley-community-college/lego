@@ -12,20 +12,21 @@ import (
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/platform/config/env"
 	"github.com/go-acme/lego/v4/providers/dns/internal/useragent"
-	infoblox "github.com/infobloxopen/infoblox-go-client"
+	infoblox "github.com/infobloxopen/infoblox-go-client/v2"
 )
 
 // Environment variables names.
 const (
 	envNamespace = "INFOBLOX_"
 
-	EnvHost        = envNamespace + "HOST"
-	EnvPort        = envNamespace + "PORT"
-	EnvUsername    = envNamespace + "USERNAME"
-	EnvPassword    = envNamespace + "PASSWORD"
-	EnvDNSView     = envNamespace + "DNS_VIEW"
-	EnvWApiVersion = envNamespace + "WAPI_VERSION"
-	EnvSSLVerify   = envNamespace + "SSL_VERIFY"
+	EnvHost          = envNamespace + "HOST"
+	EnvPort          = envNamespace + "PORT"
+	EnvUsername      = envNamespace + "USERNAME"
+	EnvPassword      = envNamespace + "PASSWORD"
+	EnvDNSView       = envNamespace + "DNS_VIEW"
+	EnvWApiVersion   = envNamespace + "WAPI_VERSION"
+	EnvSSLVerify     = envNamespace + "SSL_VERIFY"
+	EnvCACertificate = envNamespace + "CA_CERTIFICATE"
 
 	EnvTTL                = envNamespace + "TTL"
 	EnvPropagationTimeout = envNamespace + "PROPAGATION_TIMEOUT"
@@ -57,6 +58,9 @@ type Config struct {
 	// SSLVerify is whether or not to verify the ssl of the server being hit.
 	SSLVerify bool
 
+	// CACertificate is the path to the CA certificate (PEM encoded).
+	CACertificate string
+
 	PropagationTimeout time.Duration
 	PollingInterval    time.Duration
 	TTL                int
@@ -66,10 +70,11 @@ type Config struct {
 // NewDefaultConfig returns a default configuration for the DNSProvider.
 func NewDefaultConfig() *Config {
 	return &Config{
-		DNSView:     env.GetOrDefaultString(EnvDNSView, "External"),
-		WapiVersion: env.GetOrDefaultString(EnvWApiVersion, "2.11"),
-		Port:        env.GetOrDefaultString(EnvPort, "443"),
-		SSLVerify:   env.GetOrDefaultBool(EnvSSLVerify, true),
+		DNSView:       env.GetOrDefaultString(EnvDNSView, "External"),
+		WapiVersion:   env.GetOrDefaultString(EnvWApiVersion, "2.11"),
+		Port:          env.GetOrDefaultString(EnvPort, "443"),
+		SSLVerify:     env.GetOrDefaultBool(EnvSSLVerify, true),
+		CACertificate: env.GetOrDefaultString(EnvCACertificate, ""),
 
 		TTL:                env.GetOrDefaultInt(EnvTTL, dns01.DefaultTTL),
 		PropagationTimeout: env.GetOrDefaultSecond(EnvPropagationTimeout, dns01.DefaultPropagationTimeout),
@@ -83,6 +88,7 @@ type DNSProvider struct {
 	config          *Config
 	transportConfig infoblox.TransportConfig
 	ibConfig        infoblox.HostConfig
+	ibAuth          infoblox.AuthConfig
 
 	recordRefs   map[string]string
 	recordRefsMu sync.Mutex
@@ -122,13 +128,22 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 		return nil, errors.New("infoblox: missing credentials")
 	}
 
+	var sslVerify string
+	if config.CACertificate != "" {
+		sslVerify = config.CACertificate
+	} else {
+		sslVerify = strconv.FormatBool(config.SSLVerify)
+	}
+
 	return &DNSProvider{
 		config:          config,
-		transportConfig: infoblox.NewTransportConfig(strconv.FormatBool(config.SSLVerify), config.HTTPTimeout, defaultPoolConnections),
+		transportConfig: infoblox.NewTransportConfig(sslVerify, config.HTTPTimeout, defaultPoolConnections),
 		ibConfig: infoblox.HostConfig{
-			Host:     config.Host,
-			Version:  config.WapiVersion,
-			Port:     config.Port,
+			Host:    config.Host,
+			Version: config.WapiVersion,
+			Port:    config.Port,
+		},
+		ibAuth: infoblox.AuthConfig{
 			Username: config.Username,
 			Password: config.Password,
 		},
@@ -145,7 +160,7 @@ func (d *DNSProvider) Timeout() (timeout, interval time.Duration) {
 func (d *DNSProvider) Present(domain, token, keyAuth string) error {
 	info := dns01.GetChallengeInfo(domain, keyAuth)
 
-	connector, err := infoblox.NewConnector(d.ibConfig, d.transportConfig, &infoblox.WapiRequestBuilder{}, &infoblox.WapiHttpRequestor{})
+	connector, err := infoblox.NewConnector(d.ibConfig, d.ibAuth, d.transportConfig, &infoblox.WapiRequestBuilder{}, &infoblox.WapiHttpRequestor{})
 	if err != nil {
 		return fmt.Errorf("infoblox: %w", err)
 	}
@@ -154,7 +169,7 @@ func (d *DNSProvider) Present(domain, token, keyAuth string) error {
 
 	objectManager := infoblox.NewObjectManager(connector, useragent.Get(), "")
 
-	record, err := objectManager.CreateTXTRecord(dns01.UnFqdn(info.EffectiveFQDN), info.Value, uint(d.config.TTL), d.config.DNSView)
+	record, err := objectManager.CreateTXTRecord(d.config.DNSView, dns01.UnFqdn(info.EffectiveFQDN), info.Value, uint32(d.config.TTL), true, "lego", nil)
 	if err != nil {
 		return fmt.Errorf("infoblox: could not create TXT record for %s: %w", domain, err)
 	}
@@ -170,7 +185,7 @@ func (d *DNSProvider) Present(domain, token, keyAuth string) error {
 func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 	info := dns01.GetChallengeInfo(domain, keyAuth)
 
-	connector, err := infoblox.NewConnector(d.ibConfig, d.transportConfig, &infoblox.WapiRequestBuilder{}, &infoblox.WapiHttpRequestor{})
+	connector, err := infoblox.NewConnector(d.ibConfig, d.ibAuth, d.transportConfig, &infoblox.WapiRequestBuilder{}, &infoblox.WapiHttpRequestor{})
 	if err != nil {
 		return fmt.Errorf("infoblox: %w", err)
 	}
