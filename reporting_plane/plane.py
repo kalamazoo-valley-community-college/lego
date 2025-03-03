@@ -31,17 +31,26 @@ async def lifespan(app: FastAPI):
         await db.execute("""
         CREATE TABLE IF NOT EXISTS hosts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            hostname TEXT UNIQUE,
-            duration INTEGER
+            duration INTEGER,
+            common_name TEXT UNIQUE
+        )""")
+
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS sans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            host INTEGER,
+            san TEXT,
+            FOREIGN KEY (host) REFERENCES hosts (id),
+            UNIQUE(host, san)
         )""")
 
         await db.execute("""
         CREATE TABLE IF NOT EXISTS records (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            hostname TEXT,
+            host INTEGER,
             datetime DATETIME,
             provider TEXT,
-            FOREIGN KEY (hostname) REFERENCES hosts (hostname)
+            FOREIGN KEY (host) REFERENCES hosts (id)
         )""")
 
         await db.commit()
@@ -95,29 +104,56 @@ async def send_report_email(expired, expiring):
 
 @app.post("/records")
 async def create_record(request: Request):
-    # Get the current time and insert the record
     body = await request.json()
-    if "domain" not in body:
-        raise Exception("Received a record that did not contain a hostname.")
-    hostname = body["domain"]
+    if "cn" not in body or "certUrl" not in body or "sans" not in body:
+        print(body)
+        raise ValueError("Invalid record: missing cn, certUrl, or SANs.")
+
+    common_name = body["cn"]
+    sans = body["sans"]  # List of SANs
+    parsed_url = urlparse(body["certUrl"])
+    provider = parsed_url.hostname
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    parsedUrl = urlparse(body["certUrl"])
-    parsedHost = parsedUrl.hostname
+    duration = body["duration"]
+
     async with aiosqlite.connect("app.db") as db:
-        # sqlite does not handle insertion cascades in the normal way, so insert or ignore
+        # Ensure the host exists, inserting if necessary
         await db.execute(
             """
-            INSERT INTO hosts (hostname, duration) VALUES (?, ?)
-            ON CONFLICT(hostname) DO UPDATE SET duration = 
-                CASE WHEN excluded.duration != hosts.duration THEN excluded.duration ELSE hosts.duration END
+            INSERT INTO hosts (common_name, duration) 
+            VALUES (?, ?) 
+            ON CONFLICT(common_name)
+            DO UPDATE SET duration = EXCLUDED.duration
             """,
-            (hostname, 15),  # Default duration days for new hosts
+            (common_name, duration),  # Default duration for new hosts
         )
 
+
+        # Retrieve host ID
+        async with db.execute(
+            "SELECT id FROM hosts WHERE common_name = ?", (common_name,)
+        ) as cursor:
+            host_row = await cursor.fetchone()
+            if not host_row:
+                raise ValueError("Failed to insert or retrieve host ID.")
+            host_id = host_row[0]
+
+        # Insert record
         await db.execute(
-            "INSERT INTO records (hostname, datetime, provider) VALUES (?, ?, ?)",
-            (hostname, current_time, parsedHost),
+            "INSERT INTO records (host, datetime, provider) VALUES (?, ?, ?)",
+            (host_id, current_time, provider),
         )
+
+        # Insert SANs (ensure uniqueness)
+        for san in sans:
+            await db.execute(
+                """
+                INSERT INTO sans (host, san) VALUES (?, ?)
+                ON CONFLICT(host, san) DO NOTHING
+                """,
+                (host_id, san),
+            )
+
         await db.commit()
 
 
@@ -130,17 +166,21 @@ async def read_spreadsheet():
 async def get_hosts():
     async with aiosqlite.connect("app.db") as db:
         query = """
-        SELECT DISTINCT h.hostname, h.duration, r.datetime, r.provider
+        SELECT h.id, h.common_name, h.duration, 
+               r.datetime, r.provider, 
+               GROUP_CONCAT(s.san) AS sans
         FROM hosts h
-        LEFT JOIN records r ON h.hostname = r.hostname
-        WHERE r.datetime = (SELECT MAX(datetime) FROM records WHERE hostname = h.hostname)
+        LEFT JOIN records r ON h.id = r.host
+        LEFT JOIN sans s ON h.id = s.host
+        WHERE r.datetime = (SELECT MAX(datetime) FROM records WHERE host = h.id)
+        GROUP BY h.id
         """
         async with db.execute(query) as cursor:
             rows = await cursor.fetchall()
 
     hosts = []
     for row in rows:
-        hostname, duration_days, most_recent, provider = row[0], row[1], row[2], row[3]
+        host_id, common_name, duration_days, most_recent, provider, sans = row
 
         if most_recent:
             most_recent_dt = datetime.strptime(most_recent, "%Y-%m-%d %H:%M:%S")
@@ -152,35 +192,54 @@ async def get_hosts():
             )
         else:
             next_expected_renewal_str = "N/A"
+
         if provider.endswith("kvcc.edu"):
             provider = "KVCC"
         elif provider.endswith("letsencrypt.org"):
             provider = "LetsEncrypt"
         else:
             provider = f"Unknown - {provider}"
+
         hosts.append(
             {
-                "hostname": hostname,
+                "id": host_id,
+                "common_name": common_name,
                 "duration": duration_days,
                 "most_recent_record": most_recent,
                 "next_expected_renewal": next_expected_renewal_str,
                 "provider": provider,
+                "sans": sans.split(",") if sans else [],
             }
         )
-
+    print(hosts)
     return hosts
 
 
 if __name__ == "__main__":
+    import argparse
+
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8080)
-    """import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--port")
-    parser.add_argument("--certfile", required=True)
-    parser.add_argument("--keyfile", required=True)
+    parser.add_argument("--certfile")
+    parser.add_argument("--keyfile")
+    parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
     if args.port is None:
         args.port = 443
-    uvicorn.run(app, host="0.0.0.0", port=int(args.port), ssl_keyfile=args.keyfile, ssl_certfile=args.certfile)"""
+    if args.debug:
+        if args.port is not None:
+            print("--port is no-op in debug mode. debug is http only on 4444")
+        uvicorn.run(app, host="0.0.0.0", port=4444)
+    else:
+        if args.certfile is None or args.keyfile is None:
+            print("--certfile and --keyfile are required in production mode")
+            exit()
+        uvicorn.run(
+            app,
+            host="0.0.0.0",
+            port=int(args.port),
+            ssl_keyfile=args.keyfile,
+            ssl_certfile=args.certfile,
+        )

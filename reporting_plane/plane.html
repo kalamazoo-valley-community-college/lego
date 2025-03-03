@@ -27,12 +27,14 @@
     <table id="spreadsheet">
         <thead>
             <tr>
-                <th onclick="sortTable(0, this)">Hostname <span class="arrow"></span></th>
-                <th onclick="sortTable(1, this)">Most Recent Renewal <span class="arrow"></span></th>
-                <th onclick="sortTable(2, this)">Next Expected Renewal <span class="arrow"></span></th>
-                <th onclick="sortTable(3, this)">Provider <span class="arrow"></span></th>
+                <th onclick="sortTable(0, this)">Host <span class="arrow"></span></th>
+                <th onclick="sortTable(1, this)">DNS Names <span class="arrow"></span></th>
+                <th onclick="sortTable(2, this)">Most Recent Renewal <span class="arrow"></span></th>
+                <th onclick="sortTable(3, this)">Next Expected Renewal <span class="arrow"></span></th>
+                <th onclick="sortTable(4, this)">Provider <span class="arrow"></span></th>
             </tr>
         </thead>
+        
         <tbody>
             <!-- Data will be inserted here -->
         </tbody>
@@ -64,11 +66,16 @@
             const response = await fetch('/hosts');
             const data = await response.json();
             const tableBody = document.querySelector("#spreadsheet tbody");
+            tableBody.innerHTML = ""; // Clear existing rows
 
             data.forEach(row => {
                 const tr = document.createElement("tr");
-                const hostnameCell = document.createElement("td");
-                hostnameCell.textContent = row.hostname;
+
+                const cnCell = document.createElement("td");
+                cnCell.textContent = row.common_name;
+
+                const sansCell = document.createElement("td");
+                sansCell.textContent = row.sans.join(", ");  // Fix hostnames → sans
 
                 const recordCell = document.createElement("td");
                 recordCell.textContent = row.most_recent_record;
@@ -77,7 +84,7 @@
                 renewalCell.textContent = row.next_expected_renewal;
 
                 const providerCell = document.createElement("td");
-                providerCell.textContent = row.provider; // Default to 'Unknown' if missing
+                providerCell.textContent = row.provider;
 
                 const lastRecordDate = new Date(row.most_recent_record);
                 const expectedRenewalDate = new Date(row.next_expected_renewal);
@@ -91,12 +98,14 @@
                 }
 
                 tr.classList.add(rowClass);
-                tr.append(hostnameCell, recordCell, renewalCell, providerCell);
+                tr.append(cnCell, sansCell, recordCell, renewalCell, providerCell);
                 tableBody.appendChild(tr);
             });
 
-            sortTable(1, document.querySelectorAll("th")[1], true);
+            sortTable(2, document.querySelectorAll("th")[2], true);
         }
+
+
         fetchData();
 
         function sortTable(columnIndex, th, initial = false) {

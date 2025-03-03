@@ -385,17 +385,33 @@ func (c *Certifier) getForCSR(domains []string, order acme.ExtendedOrder, bundle
 	return certRes, err
 }
 
-func (c *Certifier) sendResultToKVCCControlPlane(certRes *Resource) {
+func (c *Certifier) sendResultToControlPlane(certRes *Resource) {
 	log.Infof("Posting certificate result for domain: %s", certRes.Domain)
 
-	jsonData, err := json.Marshal(certRes)
+	cert, err := certcrypto.ParsePEMCertificate(certRes.Certificate)
 	if err != nil {
-		log.Fatalf("Failed to marshal certRes: %v", err)
+		log.Fatalf("Failed to parse the certificate. This should never happen.")
+		return
+	}
+
+	durationDays := int(cert.NotAfter.Sub(cert.NotBefore).Hours() / 24)
+
+	data := map[string]interface{}{
+		"cn":        cert.Subject.CommonName,
+		"sans":      cert.DNSNames,
+		"certUrl":   certRes.CertURL,
+		"not_after": cert.NotAfter.Format(time.RFC3339),
+		"duration":  durationDays,
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		log.Fatalf("Failed to marshal certificate data: %v", err)
 		return
 	}
 
 	reporting_url := "https://smallstep.kvcc.edu/records"
-
+	//reporting_url := "http://localhost:4444/records"
 	resp, err := c.core.HTTPClient.Post(reporting_url, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		log.Warnf("Failed to post certificate result: %v", err)
@@ -436,9 +452,8 @@ func (c *Certifier) checkResponse(order acme.ExtendedOrder, certRes *Resource, b
 	certRes.CertStableURL = order.Certificate
 
 	if preferredChain == "" {
-		fmt.Printf("HERE IS THE CERTIFICATE URL: %v", certRes.CertURL)
 		log.Infof("[%s] Server responded with a certificate.", certRes.Domain)
-		c.sendResultToKVCCControlPlane(certRes)
+		c.sendResultToControlPlane(certRes)
 		return true, nil
 	}
 
