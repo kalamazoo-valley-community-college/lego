@@ -12,7 +12,7 @@ from fastapi.responses import HTMLResponse
 
 scheduler = AsyncIOScheduler()
 
-EMAIL_TO_ADDRESS = ""  # This should be the address of the ACME distribution group
+EMAIL_TO_ADDRESS = "certificates@kvcc.edu"  # This should be the address of the ACME distribution group
 EMAIL_FROM_ADDRESS = "acme_notifier@kvcc.edu"
 EMAIL_SUBJECT = "¡TLS RENEWAL FAILURES!"
 DEFAULT_DURATION_DAYS = 15
@@ -31,26 +31,24 @@ async def lifespan(app: FastAPI):
         await db.execute("""
         CREATE TABLE IF NOT EXISTS hosts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            duration INTEGER,
             common_name TEXT UNIQUE
         )""")
-
-        await db.execute("""
-        CREATE TABLE IF NOT EXISTS sans (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            host INTEGER,
-            san TEXT,
-            FOREIGN KEY (host) REFERENCES hosts (id),
-            UNIQUE(host, san)
-        )""")
-
         await db.execute("""
         CREATE TABLE IF NOT EXISTS records (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             host INTEGER,
             datetime DATETIME,
             provider TEXT,
+            duration INTEGER,
             FOREIGN KEY (host) REFERENCES hosts (id)
+        )""")
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS sans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            record INTEGER,
+            san TEXT,
+            FOREIGN KEY (record) REFERENCES records (id),
+            UNIQUE(record, san)
         )""")
 
         await db.commit()
@@ -64,7 +62,7 @@ app = FastAPI(lifespan=lifespan)
 
 
 async def report_problem_hosts():
-    hosts = await get_hosts()
+    hosts = await get_records()
     expired, expiring = [], []
     now = datetime.now()
 
@@ -85,11 +83,11 @@ async def send_report_email(expired, expiring):
     report = ""
     if len(expired) > 0:
         report += """The following hosts have FAILED TO RENEW and ARE EXPIRED:\n"""
-        report += "\n".join([x["hostname"] for x in expired])
+        report += "\n".join([x["common_name"] for x in expired])
         report += "\n"
     if len(expiring) > 0:
         report += """The following hosts have FAILED TO RENEW and WILL EXPIRE SOON:\n"""
-        report += "\n".join([x["hostname"] for x in expired])
+        report += "\n".join([x["common_name"] for x in expired])
         report += "\n"
     if report == "":
         return
@@ -110,26 +108,22 @@ async def create_record(request: Request):
         raise ValueError("Invalid record: missing cn, certUrl, or SANs.")
 
     common_name = body["cn"]
-    sans = body["sans"]  # List of SANs
+    sans = body["sans"]
     parsed_url = urlparse(body["certUrl"])
     provider = parsed_url.hostname
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     duration = body["duration"]
 
     async with aiosqlite.connect("app.db") as db:
-        # Ensure the host exists, inserting if necessary
         await db.execute(
             """
-            INSERT INTO hosts (common_name, duration) 
-            VALUES (?, ?) 
-            ON CONFLICT(common_name)
-            DO UPDATE SET duration = EXCLUDED.duration
+            INSERT INTO hosts (common_name) 
+            VALUES (?) 
+            ON CONFLICT(common_name) DO NOTHING
             """,
-            (common_name, duration),  # Default duration for new hosts
+            (common_name,),
         )
 
-
-        # Retrieve host ID
         async with db.execute(
             "SELECT id FROM hosts WHERE common_name = ?", (common_name,)
         ) as cursor:
@@ -138,22 +132,25 @@ async def create_record(request: Request):
                 raise ValueError("Failed to insert or retrieve host ID.")
             host_id = host_row[0]
 
-        # Insert record
         await db.execute(
-            "INSERT INTO records (host, datetime, provider) VALUES (?, ?, ?)",
-            (host_id, current_time, provider),
+            "INSERT INTO records (host, duration, datetime, provider) VALUES (?, ?, ?, ?)",
+            (host_id, duration, current_time, provider),
         )
 
-        # Insert SANs (ensure uniqueness)
+        async with db.execute("SELECT last_insert_rowid()") as cursor:
+            record_row = await cursor.fetchone()
+            if not record_row:
+                raise ValueError("Failed to retrieve record ID.")
+            record_id = record_row[0]
+
         for san in sans:
             await db.execute(
                 """
-                INSERT INTO sans (host, san) VALUES (?, ?)
-                ON CONFLICT(host, san) DO NOTHING
+                INSERT INTO sans (record, san) VALUES (?, ?)
+                ON CONFLICT(record, san) DO NOTHING
                 """,
-                (host_id, san),
+                (record_id, san),
             )
-
         await db.commit()
 
 
@@ -162,18 +159,17 @@ async def read_spreadsheet():
     return HTML
 
 
-@app.get("/hosts")
-async def get_hosts():
+@app.get("/records")
+async def get_records():
     async with aiosqlite.connect("app.db") as db:
         query = """
-        SELECT h.id, h.common_name, h.duration, 
-               r.datetime, r.provider, 
-               GROUP_CONCAT(s.san) AS sans
+        SELECT h.id, h.common_name,  r.duration, r.datetime, r.provider, 
+        GROUP_CONCAT(s.san) AS sans
         FROM hosts h
         LEFT JOIN records r ON h.id = r.host
-        LEFT JOIN sans s ON h.id = s.host
+        LEFT JOIN sans s ON r.id = s.record
         WHERE r.datetime = (SELECT MAX(datetime) FROM records WHERE host = h.id)
-        GROUP BY h.id
+        GROUP BY h.id, r.id
         """
         async with db.execute(query) as cursor:
             rows = await cursor.fetchall()
@@ -191,7 +187,9 @@ async def get_hosts():
                 "%Y-%m-%d %H:%M:%S"
             )
         else:
-            next_expected_renewal_str = "N/A"
+            next_expected_renewal_str = datetime.fromtimestamp(0).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
 
         if provider.endswith("kvcc.edu"):
             provider = "KVCC"
@@ -211,7 +209,6 @@ async def get_hosts():
                 "sans": sans.split(",") if sans else [],
             }
         )
-    print(hosts)
     return hosts
 
 

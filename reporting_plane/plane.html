@@ -63,7 +63,7 @@
         updateDateTime();
 
         async function fetchData() {
-            const response = await fetch('/hosts');
+            const response = await fetch('/records');
             const data = await response.json();
             const tableBody = document.querySelector("#spreadsheet tbody");
             tableBody.innerHTML = ""; // Clear existing rows
