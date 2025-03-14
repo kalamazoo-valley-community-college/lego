@@ -5,5 +5,9 @@
 dist/
 builds/
 reporting_plane/build/*
+reporting_plane/*.spec
 **.db
 cmd/lego/lego
+**.pyc
+**.pem
+**.crt

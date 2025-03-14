@@ -1,4 +1,4 @@
-<head>
+HTML = """<head>
     <style>
         .red { color: red; }
         .orange { color: orange; }
@@ -138,3 +138,4 @@
         }
     </script>
 </body>
+"""

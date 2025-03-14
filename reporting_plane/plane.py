@@ -2,17 +2,23 @@ import smtplib
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
+from html import HTML
 from pathlib import Path
+from sys import exit
 from urllib.parse import urlparse
 
 import aiosqlite
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse
 
 scheduler = AsyncIOScheduler()
 
-EMAIL_TO_ADDRESS = "certificates@kvcc.edu"  # This should be the address of the ACME distribution group
+CLIENTS_BASE_DIR = Path("/etc/step-ca/reporting-plane/clients")
+
+EMAIL_TO_ADDRESS = (
+    "certificates@kvcc.edu"  # This should be the address of the ACME distribution group
+)
 EMAIL_FROM_ADDRESS = "acme_notifier@kvcc.edu"
 EMAIL_SUBJECT = "¡TLS RENEWAL FAILURES!"
 DEFAULT_DURATION_DAYS = 15
@@ -20,8 +26,6 @@ DEFAULT_DURATION_DAYS = 15
 DEFAULT_DURATION_SECS = DEFAULT_DURATION_DAYS * 86400
 DEFAULT_RENEWAL_DAYS = 2 * DEFAULT_DURATION_DAYS // 3
 DEFAULT_RENEWAL_SECS = DEFAULT_DURATION_DAYS * 86400
-
-HTML = Path("plane.html").read_text()
 
 
 # Create db on startup
@@ -98,6 +102,35 @@ async def send_report_email(expired, expiring):
     s = smtplib.SMTP("smtp.kvcc.edu")
     s.sendmail(EMAIL_FROM_ADDRESS, [EMAIL_TO_ADDRESS], msg.as_string())
     s.quit()
+
+
+@app.get("/client/{os_name}")
+async def get_client(os_name: str):
+    # Map OS names to binary file names
+    os_name = os_name.lower()
+    payloads = {
+        "windows": "lego.exe",
+        "macos": "lego_macos",
+        "linux": "lego_linux",
+    }
+
+    if os_name not in payloads:
+        return HTTPException(
+            status_code=404,
+            detail='Supported values are "linux", "windows", and "macos".',
+        )
+
+    file_path = CLIENTS_BASE_DIR / payloads[os_name]
+
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=404, detail="Valid input, but binary is missing. Contact admin."
+        )
+    if os_name == "windows":
+        file_name = "lego.exe"
+    else:
+        file_name = "lego"
+    return FileResponse(file_path, filename=file_name)
 
 
 @app.post("/records")
@@ -223,8 +256,6 @@ if __name__ == "__main__":
     parser.add_argument("--keyfile")
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
-    if args.port is None:
-        args.port = 443
     if args.debug:
         if args.port is not None:
             print("--port is no-op in debug mode. debug is http only on 4444")
@@ -233,6 +264,8 @@ if __name__ == "__main__":
         if args.certfile is None or args.keyfile is None:
             print("--certfile and --keyfile are required in production mode")
             exit()
+        if args.port is None:
+            args.port = 443
         uvicorn.run(
             app,
             host="0.0.0.0",
