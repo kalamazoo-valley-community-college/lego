@@ -8,13 +8,16 @@ import (
 	"github.com/go-acme/lego/v4/challenge"
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/providers/dns/acmedns"
+	"github.com/go-acme/lego/v4/providers/dns/active24"
 	"github.com/go-acme/lego/v4/providers/dns/alidns"
 	"github.com/go-acme/lego/v4/providers/dns/allinkl"
 	"github.com/go-acme/lego/v4/providers/dns/arvancloud"
 	"github.com/go-acme/lego/v4/providers/dns/auroradns"
 	"github.com/go-acme/lego/v4/providers/dns/autodns"
+	"github.com/go-acme/lego/v4/providers/dns/axelname"
 	"github.com/go-acme/lego/v4/providers/dns/azure"
 	"github.com/go-acme/lego/v4/providers/dns/azuredns"
+	"github.com/go-acme/lego/v4/providers/dns/baiducloud"
 	"github.com/go-acme/lego/v4/providers/dns/bindman"
 	"github.com/go-acme/lego/v4/providers/dns/bluecat"
 	"github.com/go-acme/lego/v4/providers/dns/bookmyname"
@@ -52,6 +55,7 @@ import (
 	"github.com/go-acme/lego/v4/providers/dns/epik"
 	"github.com/go-acme/lego/v4/providers/dns/exec"
 	"github.com/go-acme/lego/v4/providers/dns/exoscale"
+	"github.com/go-acme/lego/v4/providers/dns/f5xc"
 	"github.com/go-acme/lego/v4/providers/dns/freemyip"
 	"github.com/go-acme/lego/v4/providers/dns/gandi"
 	"github.com/go-acme/lego/v4/providers/dns/gandiv5"
@@ -164,6 +168,8 @@ func NewDNSChallengeProviderByName(name string) (challenge.Provider, error) {
 		return dns01.NewDNSProviderManual()
 	case "acme-dns", "acmedns":
 		return acmedns.NewDNSProvider()
+	case "active24":
+		return active24.NewDNSProvider()
 	case "alidns":
 		return alidns.NewDNSProvider()
 	case "allinkl":
@@ -174,10 +180,14 @@ func NewDNSChallengeProviderByName(name string) (challenge.Provider, error) {
 		return auroradns.NewDNSProvider()
 	case "autodns":
 		return autodns.NewDNSProvider()
+	case "axelname":
+		return axelname.NewDNSProvider()
 	case "azure":
 		return azure.NewDNSProvider()
 	case "azuredns":
 		return azuredns.NewDNSProvider()
+	case "baiducloud":
+		return baiducloud.NewDNSProvider()
 	case "bindman":
 		return bindman.NewDNSProvider()
 	case "bluecat":
@@ -252,6 +262,8 @@ func NewDNSChallengeProviderByName(name string) (challenge.Provider, error) {
 		return exec.NewDNSProvider()
 	case "exoscale":
 		return exoscale.NewDNSProvider()
+	case "f5xc":
+		return f5xc.NewDNSProvider()
 	case "freemyip":
 		return freemyip.NewDNSProvider()
 	case "gandi":

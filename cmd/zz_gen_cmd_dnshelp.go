@@ -14,13 +14,16 @@ func allDNSCodes() string {
 	providers := []string{
 		"manual",
 		"acme-dns",
+		"active24",
 		"alidns",
 		"allinkl",
 		"arvancloud",
 		"auroradns",
 		"autodns",
+		"axelname",
 		"azure",
 		"azuredns",
+		"baiducloud",
 		"bindman",
 		"bluecat",
 		"bookmyname",
@@ -58,6 +61,7 @@ func allDNSCodes() string {
 		"epik",
 		"exec",
 		"exoscale",
+		"f5xc",
 		"freemyip",
 		"gandi",
 		"gandiv5",
@@ -190,6 +194,27 @@ func displayDNSHelp(w io.Writer, name string) error {
 		ew.writeln()
 		ew.writeln(`More information: https://go-acme.github.io/lego/dns/acme-dns`)
 
+	case "active24":
+		// generated from: providers/dns/active24/active24.toml
+		ew.writeln(`Configuration for Active24.`)
+		ew.writeln(`Code:	'active24'`)
+		ew.writeln(`Since:	'v4.23.0'`)
+		ew.writeln()
+
+		ew.writeln(`Credentials:`)
+		ew.writeln(`	- "ACTIVE24_API_KEY":	API key`)
+		ew.writeln(`	- "ACTIVE24_SECRET":	Secret`)
+		ew.writeln()
+
+		ew.writeln(`Additional Configuration:`)
+		ew.writeln(`	- "ACTIVE24_HTTP_TIMEOUT":	API request timeout in seconds (Default: 30)`)
+		ew.writeln(`	- "ACTIVE24_POLLING_INTERVAL":	Time between DNS propagation check in seconds (Default: 2)`)
+		ew.writeln(`	- "ACTIVE24_PROPAGATION_TIMEOUT":	Maximum waiting time for DNS propagation in seconds (Default: 60)`)
+		ew.writeln(`	- "ACTIVE24_TTL":	The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)`)
+
+		ew.writeln()
+		ew.writeln(`More information: https://go-acme.github.io/lego/dns/active24`)
+
 	case "alidns":
 		// generated from: providers/dns/alidns/alidns.toml
 		ew.writeln(`Configuration for Alibaba Cloud DNS.`)
@@ -297,6 +322,27 @@ func displayDNSHelp(w io.Writer, name string) error {
 		ew.writeln()
 		ew.writeln(`More information: https://go-acme.github.io/lego/dns/autodns`)
 
+	case "axelname":
+		// generated from: providers/dns/axelname/axelname.toml
+		ew.writeln(`Configuration for Axelname.`)
+		ew.writeln(`Code:	'axelname'`)
+		ew.writeln(`Since:	'v4.23.0'`)
+		ew.writeln()
+
+		ew.writeln(`Credentials:`)
+		ew.writeln(`	- "AXELNAME_NICKNAME":	Account nickname`)
+		ew.writeln(`	- "AXELNAME_TOKEN":	API token`)
+		ew.writeln()
+
+		ew.writeln(`Additional Configuration:`)
+		ew.writeln(`	- "AXELNAME_HTTP_TIMEOUT":	API request timeout in seconds (Default: 30)`)
+		ew.writeln(`	- "AXELNAME_POLLING_INTERVAL":	Time between DNS propagation check in seconds (Default: 2)`)
+		ew.writeln(`	- "AXELNAME_PROPAGATION_TIMEOUT":	Maximum waiting time for DNS propagation in seconds (Default: 60)`)
+		ew.writeln(`	- "AXELNAME_TTL":	The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)`)
+
+		ew.writeln()
+		ew.writeln(`More information: https://go-acme.github.io/lego/dns/axelname`)
+
 	case "azure":
 		// generated from: providers/dns/azure/azure.toml
 		ew.writeln(`Configuration for Azure (deprecated).`)
@@ -354,6 +400,26 @@ func displayDNSHelp(w io.Writer, name string) error {
 
 		ew.writeln()
 		ew.writeln(`More information: https://go-acme.github.io/lego/dns/azuredns`)
+
+	case "baiducloud":
+		// generated from: providers/dns/baiducloud/baiducloud.toml
+		ew.writeln(`Configuration for Baidu Cloud.`)
+		ew.writeln(`Code:	'baiducloud'`)
+		ew.writeln(`Since:	'v4.23.0'`)
+		ew.writeln()
+
+		ew.writeln(`Credentials:`)
+		ew.writeln(`	- "BAIDUCLOUD_ACCESS_KEY_ID":	Access key`)
+		ew.writeln(`	- "BAIDUCLOUD_SECRET_ACCESS_KEY":	Secret access key`)
+		ew.writeln()
+
+		ew.writeln(`Additional Configuration:`)
+		ew.writeln(`	- "BAIDUCLOUD_POLLING_INTERVAL":	Time between DNS propagation check in seconds (Default: 2)`)
+		ew.writeln(`	- "BAIDUCLOUD_PROPAGATION_TIMEOUT":	Maximum waiting time for DNS propagation in seconds (Default: 60)`)
+		ew.writeln(`	- "BAIDUCLOUD_TTL":	The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)`)
+
+		ew.writeln()
+		ew.writeln(`More information: https://go-acme.github.io/lego/dns/baiducloud`)
 
 	case "bindman":
 		// generated from: providers/dns/bindman/bindman.toml
@@ -541,6 +607,7 @@ func displayDNSHelp(w io.Writer, name string) error {
 		ew.writeln()
 
 		ew.writeln(`Additional Configuration:`)
+		ew.writeln(`	- "CLOUDFLARE_BASE_URL":	API base URL (Default: https://api.cloudflare.com/client/v4)`)
 		ew.writeln(`	- "CLOUDFLARE_HTTP_TIMEOUT":	API request timeout in seconds (Default: )`)
 		ew.writeln(`	- "CLOUDFLARE_POLLING_INTERVAL":	Time between DNS propagation check in seconds (Default: 2)`)
 		ew.writeln(`	- "CLOUDFLARE_PROPAGATION_TIMEOUT":	Maximum waiting time for DNS propagation in seconds (Default: 120)`)
@@ -1147,6 +1214,28 @@ func displayDNSHelp(w io.Writer, name string) error {
 
 		ew.writeln()
 		ew.writeln(`More information: https://go-acme.github.io/lego/dns/exoscale`)
+
+	case "f5xc":
+		// generated from: providers/dns/f5xc/f5xc.toml
+		ew.writeln(`Configuration for F5 XC.`)
+		ew.writeln(`Code:	'f5xc'`)
+		ew.writeln(`Since:	'v4.23.0'`)
+		ew.writeln()
+
+		ew.writeln(`Credentials:`)
+		ew.writeln(`	- "F5XC_API_TOKEN":	API token`)
+		ew.writeln(`	- "F5XC_GROUP_NAME":	Group name`)
+		ew.writeln(`	- "F5XC_TENANT_NAME":	XC Tenant shortname`)
+		ew.writeln()
+
+		ew.writeln(`Additional Configuration:`)
+		ew.writeln(`	- "F5XC_HTTP_TIMEOUT":	API request timeout in seconds (Default: 30)`)
+		ew.writeln(`	- "F5XC_POLLING_INTERVAL":	Time between DNS propagation check in seconds (Default: 2)`)
+		ew.writeln(`	- "F5XC_PROPAGATION_TIMEOUT":	Maximum waiting time for DNS propagation in seconds (Default: 60)`)
+		ew.writeln(`	- "F5XC_TTL":	The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)`)
+
+		ew.writeln()
+		ew.writeln(`More information: https://go-acme.github.io/lego/dns/f5xc`)
 
 	case "freemyip":
 		// generated from: providers/dns/freemyip/freemyip.toml
@@ -2598,6 +2687,7 @@ func displayDNSHelp(w io.Writer, name string) error {
 		ew.writeln(`Additional Configuration:`)
 		ew.writeln(`	- "AWS_MAX_RETRIES":	The number of maximum returns the service will use to make an individual API request`)
 		ew.writeln(`	- "AWS_POLLING_INTERVAL":	Time between DNS propagation check in seconds (Default: 4)`)
+		ew.writeln(`	- "AWS_PRIVATE_ZONE":	Set to true to use private zones only (default: use public zones only)`)
 		ew.writeln(`	- "AWS_PROPAGATION_TIMEOUT":	Maximum waiting time for DNS propagation in seconds (Default: 120)`)
 		ew.writeln(`	- "AWS_SHARED_CREDENTIALS_FILE":	Managed by the AWS client. Shared credentials file.`)
 		ew.writeln(`	- "AWS_TTL":	The TTL of the TXT record used for the DNS challenge in seconds (Default: 10)`)
