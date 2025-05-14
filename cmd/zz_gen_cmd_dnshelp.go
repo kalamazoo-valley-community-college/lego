@@ -37,6 +37,7 @@ func allDNSCodes() string {
 		"cloudru",
 		"cloudxns",
 		"conoha",
+		"conohav3",
 		"constellix",
 		"corenetworks",
 		"cpanel",
@@ -112,6 +113,7 @@ func allDNSCodes() string {
 		"netcup",
 		"netlify",
 		"nicmanager",
+		"nicru",
 		"nifcloud",
 		"njalla",
 		"nodion",
@@ -684,7 +686,7 @@ func displayDNSHelp(w io.Writer, name string) error {
 
 	case "conoha":
 		// generated from: providers/dns/conoha/conoha.toml
-		ew.writeln(`Configuration for ConoHa.`)
+		ew.writeln(`Configuration for ConoHa v2.`)
 		ew.writeln(`Code:	'conoha'`)
 		ew.writeln(`Since:	'v1.2.0'`)
 		ew.writeln()
@@ -704,6 +706,29 @@ func displayDNSHelp(w io.Writer, name string) error {
 
 		ew.writeln()
 		ew.writeln(`More information: https://go-acme.github.io/lego/dns/conoha`)
+
+	case "conohav3":
+		// generated from: providers/dns/conohav3/conohav3.toml
+		ew.writeln(`Configuration for ConoHa v3.`)
+		ew.writeln(`Code:	'conohav3'`)
+		ew.writeln(`Since:	'v4.24.0'`)
+		ew.writeln()
+
+		ew.writeln(`Credentials:`)
+		ew.writeln(`	- "CONOHAV3_API_PASSWORD":	The API password`)
+		ew.writeln(`	- "CONOHAV3_API_USER_ID":	The API user ID`)
+		ew.writeln(`	- "CONOHAV3_TENANT_ID":	Tenant ID`)
+		ew.writeln()
+
+		ew.writeln(`Additional Configuration:`)
+		ew.writeln(`	- "CONOHAV3_HTTP_TIMEOUT":	API request timeout in seconds (Default: 30)`)
+		ew.writeln(`	- "CONOHAV3_POLLING_INTERVAL":	Time between DNS propagation check in seconds (Default: 2)`)
+		ew.writeln(`	- "CONOHAV3_PROPAGATION_TIMEOUT":	Maximum waiting time for DNS propagation in seconds (Default: 60)`)
+		ew.writeln(`	- "CONOHAV3_REGION":	The region (Default: c3j1)`)
+		ew.writeln(`	- "CONOHAV3_TTL":	The TTL of the TXT record used for the DNS challenge in seconds (Default: 60)`)
+
+		ew.writeln()
+		ew.writeln(`More information: https://go-acme.github.io/lego/dns/conohav3`)
 
 	case "constellix":
 		// generated from: providers/dns/constellix/constellix.toml
@@ -2291,6 +2316,29 @@ func displayDNSHelp(w io.Writer, name string) error {
 
 		ew.writeln()
 		ew.writeln(`More information: https://go-acme.github.io/lego/dns/nicmanager`)
+
+	case "nicru":
+		// generated from: providers/dns/nicru/nicru.toml
+		ew.writeln(`Configuration for RU CENTER.`)
+		ew.writeln(`Code:	'nicru'`)
+		ew.writeln(`Since:	'v4.24.0'`)
+		ew.writeln()
+
+		ew.writeln(`Credentials:`)
+		ew.writeln(`	- "NICRU_PASSWORD":	Password for an account in RU CENTER`)
+		ew.writeln(`	- "NICRU_SECRET":	Secret for application in DNS-hosting RU CENTER`)
+		ew.writeln(`	- "NICRU_SERVICE_ID":	Service ID for application in DNS-hosting RU CENTER`)
+		ew.writeln(`	- "NICRU_SERVICE_NAME":	Service Name for DNS-hosting RU CENTER`)
+		ew.writeln(`	- "NICRU_USER":	Agreement for an account in RU CENTER`)
+		ew.writeln()
+
+		ew.writeln(`Additional Configuration:`)
+		ew.writeln(`	- "NICRU_POLLING_INTERVAL":	Time between DNS propagation check in seconds (Default: 60)`)
+		ew.writeln(`	- "NICRU_PROPAGATION_TIMEOUT":	Maximum waiting time for DNS propagation in seconds (Default: 600)`)
+		ew.writeln(`	- "NICRU_TTL":	The TTL of the TXT record used for the DNS challenge in seconds (Default: 30)`)
+
+		ew.writeln()
+		ew.writeln(`More information: https://go-acme.github.io/lego/dns/nicru`)
 
 	case "nifcloud":
 		// generated from: providers/dns/nifcloud/nifcloud.toml
