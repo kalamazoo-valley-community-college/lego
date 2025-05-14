@@ -412,17 +412,22 @@ func (c *Certifier) sendResultToControlPlane(certRes *Resource) {
 
 	reporting_url := "https://smallstep.kvcc.edu/records"
 	//reporting_url := "http://localhost:4444/records"
-	resp, err := c.core.HTTPClient.Post(reporting_url, "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		log.Warnf("Failed to post certificate result: %v", err)
-		return
-	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		log.Fatalf("Unexpected response status: %d", resp.StatusCode)
+	if strings.Contains(certRes.CertURL, "smallstep.kvcc") {
+		log.Infof("Using KVCC authority, no need to report success for domain: %s", certRes.Domain)
 	} else {
-		log.Infof("Successfully posted certificate result for domain: %s", certRes.Domain)
+		resp, err := c.core.HTTPClient.Post(reporting_url, "application/json", bytes.NewBuffer(jsonData))
+		if err != nil {
+			log.Warnf("Failed to post certificate result: %v", err)
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			log.Fatalf("Unexpected response status: %d", resp.StatusCode)
+		} else {
+			log.Infof("Successfully posted certificate result for domain: %s", certRes.Domain)
+		}
 	}
 }
 
