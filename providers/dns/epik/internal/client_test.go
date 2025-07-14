@@ -1,40 +1,38 @@
 package internal
 
 import (
-	"context"
-	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
-	"path/filepath"
 	"testing"
 
+	"github.com/go-acme/lego/v4/platform/tester/servermock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func setupTest(t *testing.T) (*Client, *http.ServeMux) {
-	t.Helper()
+func mockBuilder() *servermock.Builder[*Client] {
+	return servermock.NewBuilder[*Client](
+		func(server *httptest.Server) (*Client, error) {
+			client := NewClient("secret")
+			client.HTTPClient = server.Client()
+			client.baseURL, _ = url.Parse(server.URL)
 
-	mux := http.NewServeMux()
-	server := httptest.NewServer(mux)
-	t.Cleanup(server.Close)
-
-	client := NewClient("secret")
-	client.HTTPClient = server.Client()
-	client.baseURL, _ = url.Parse(server.URL)
-
-	return client, mux
+			return client, nil
+		},
+		servermock.CheckHeader().WithJSONHeaders(),
+	)
 }
 
 func TestClient_GetDNSRecords(t *testing.T) {
-	client, mux := setupTest(t)
+	client := mockBuilder().
+		Route("GET /domains/example.com/records",
+			servermock.ResponseFromFixture("getDnsRecord.json"),
+			servermock.CheckQueryParameter().Strict().
+				With("SIGNATURE", "secret")).
+		Build(t)
 
-	mux.HandleFunc("/domains/example.com/records", testHandler(http.MethodGet, http.StatusOK, "getDnsRecord.json"))
-
-	records, err := client.GetDNSRecords(context.Background(), "example.com")
+	records, err := client.GetDNSRecords(t.Context(), "example.com")
 	require.NoError(t, err)
 
 	expected := []Record{
@@ -89,18 +87,25 @@ func TestClient_GetDNSRecords(t *testing.T) {
 }
 
 func TestClient_GetDNSRecords_error(t *testing.T) {
-	client, mux := setupTest(t)
+	client := mockBuilder().
+		Route("GET /domains/example.com/records",
+			servermock.ResponseFromFixture("error.json").
+				WithStatusCode(http.StatusUnauthorized),
+			servermock.CheckQueryParameter().Strict().
+				With("SIGNATURE", "secret")).
+		Build(t)
 
-	mux.HandleFunc("/domains/example.com/records", testHandler(http.MethodGet, http.StatusUnauthorized, "error.json"))
-
-	_, err := client.GetDNSRecords(context.Background(), "example.com")
+	_, err := client.GetDNSRecords(t.Context(), "example.com")
 	require.Error(t, err)
 }
 
 func TestClient_CreateHostRecord(t *testing.T) {
-	client, mux := setupTest(t)
-
-	mux.HandleFunc("/domains/example.com/records", testHandler(http.MethodPost, http.StatusOK, "createHostRecord.json"))
+	client := mockBuilder().
+		Route("POST /domains/example.com/records",
+			servermock.ResponseFromFixture("createHostRecord.json"),
+			servermock.CheckQueryParameter().Strict().
+				With("SIGNATURE", "secret")).
+		Build(t)
 
 	record := RecordRequest{
 		Host: "www2",
@@ -110,7 +115,7 @@ func TestClient_CreateHostRecord(t *testing.T) {
 		TTL:  300,
 	}
 
-	data, err := client.CreateHostRecord(context.Background(), "example.com", record)
+	data, err := client.CreateHostRecord(t.Context(), "example.com", record)
 	require.NoError(t, err)
 
 	expected := &Data{
@@ -122,9 +127,13 @@ func TestClient_CreateHostRecord(t *testing.T) {
 }
 
 func TestClient_CreateHostRecord_error(t *testing.T) {
-	client, mux := setupTest(t)
-
-	mux.HandleFunc("/domains/example.com/records", testHandler(http.MethodPost, http.StatusUnauthorized, "error.json"))
+	client := mockBuilder().
+		Route("POST /domains/example.com/records",
+			servermock.ResponseFromFixture("error.json").
+				WithStatusCode(http.StatusUnauthorized),
+			servermock.CheckQueryParameter().Strict().
+				With("SIGNATURE", "secret")).
+		Build(t)
 
 	record := RecordRequest{
 		Host: "www2",
@@ -134,16 +143,20 @@ func TestClient_CreateHostRecord_error(t *testing.T) {
 		TTL:  300,
 	}
 
-	_, err := client.CreateHostRecord(context.Background(), "example.com", record)
+	_, err := client.CreateHostRecord(t.Context(), "example.com", record)
 	require.Error(t, err)
 }
 
 func TestClient_RemoveHostRecord(t *testing.T) {
-	client, mux := setupTest(t)
+	client := mockBuilder().
+		Route("DELETE /domains/example.com/records",
+			servermock.ResponseFromFixture("removeHostRecord.json"),
+			servermock.CheckQueryParameter().Strict().
+				With("ID", "abc123").
+				With("SIGNATURE", "secret")).
+		Build(t)
 
-	mux.HandleFunc("/domains/example.com/records", testHandler(http.MethodDelete, http.StatusOK, "removeHostRecord.json"))
-
-	data, err := client.RemoveHostRecord(context.Background(), "example.com", "abc123")
+	data, err := client.RemoveHostRecord(t.Context(), "example.com", "abc123")
 	require.NoError(t, err)
 
 	expected := &Data{
@@ -155,45 +168,12 @@ func TestClient_RemoveHostRecord(t *testing.T) {
 }
 
 func TestClient_RemoveHostRecord_error(t *testing.T) {
-	client, mux := setupTest(t)
+	client := mockBuilder().
+		Route("DELETE /domains/example.com/records",
+			servermock.ResponseFromFixture("error.json").
+				WithStatusCode(http.StatusUnauthorized)).
+		Build(t)
 
-	mux.HandleFunc("/domains/example.com/records", testHandler(http.MethodDelete, http.StatusUnauthorized, "error.json"))
-
-	_, err := client.RemoveHostRecord(context.Background(), "example.com", "abc123")
+	_, err := client.RemoveHostRecord(t.Context(), "example.com", "abc123")
 	require.Error(t, err)
-}
-
-func testHandler(method string, statusCode int, filename string) http.HandlerFunc {
-	return func(rw http.ResponseWriter, req *http.Request) {
-		if req.Method != method {
-			http.Error(rw, fmt.Sprintf(`{"message":"unsupported method: %s"}`, req.Method), http.StatusMethodNotAllowed)
-			return
-		}
-
-		auth := req.URL.Query().Get("SIGNATURE")
-		if auth != "secret" {
-			http.Error(rw, fmt.Sprintf("invalid API key: %s", auth), http.StatusUnauthorized)
-			return
-		}
-
-		rw.WriteHeader(statusCode)
-
-		if statusCode == http.StatusNoContent {
-			return
-		}
-
-		file, err := os.Open(filepath.Join("fixtures", filename))
-		if err != nil {
-			http.Error(rw, fmt.Sprintf(`{"message":"%v"}`, err), http.StatusInternalServerError)
-			return
-		}
-
-		defer func() { _ = file.Close() }()
-
-		_, err = io.Copy(rw, file)
-		if err != nil {
-			http.Error(rw, fmt.Sprintf(`{"message":"%v"}`, err), http.StatusInternalServerError)
-			return
-		}
-	}
 }

@@ -1,54 +1,32 @@
 package internal
 
 import (
-	"context"
-	"io"
-	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
+	"github.com/go-acme/lego/v4/platform/tester/servermock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func setupTest(t *testing.T) (*Client, *http.ServeMux) {
-	t.Helper()
+func mockBuilder() *servermock.Builder[*Client] {
+	return servermock.NewBuilder[*Client](
+		func(server *httptest.Server) (*Client, error) {
+			client := NewClient(server.Client())
+			client.BaseURL = server.URL
 
-	mux := http.NewServeMux()
-	server := httptest.NewServer(mux)
-	t.Cleanup(server.Close)
-
-	client := NewClient(server.Client())
-	client.BaseURL = server.URL
-
-	return client, mux
+			return client, nil
+		},
+		servermock.CheckHeader().WithJSONHeaders(),
+	)
 }
 
 func TestDomainService_GetAll(t *testing.T) {
-	client, mux := setupTest(t)
+	client := mockBuilder().
+		Route("GET /v1/domains", servermock.ResponseFromFixture("domains-GetAll.json")).
+		Build(t)
 
-	mux.HandleFunc("/v1/domains", func(rw http.ResponseWriter, req *http.Request) {
-		if req.Method != http.MethodGet {
-			http.Error(rw, "invalid method: "+req.Method, http.StatusBadRequest)
-			return
-		}
-
-		file, err := os.Open("./fixtures/domains-GetAll.json")
-		if err != nil {
-			http.Error(rw, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer func() { _ = file.Close() }()
-
-		_, err = io.Copy(rw, file)
-		if err != nil {
-			http.Error(rw, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	})
-
-	data, err := client.Domains.GetAll(context.Background(), nil)
+	data, err := client.Domains.GetAll(t.Context(), nil)
 	require.NoError(t, err)
 
 	expected := []Domain{
@@ -62,29 +40,14 @@ func TestDomainService_GetAll(t *testing.T) {
 }
 
 func TestDomainService_Search(t *testing.T) {
-	client, mux := setupTest(t)
+	client := mockBuilder().
+		Route("GET /v1/domains/search",
+			servermock.ResponseFromFixture("domains-Search.json"),
+			servermock.CheckQueryParameter().Strict().
+				With("exact", "lego.wtf")).
+		Build(t)
 
-	mux.HandleFunc("/v1/domains/search", func(rw http.ResponseWriter, req *http.Request) {
-		if req.Method != http.MethodGet {
-			http.Error(rw, "invalid method: "+req.Method, http.StatusBadRequest)
-			return
-		}
-
-		file, err := os.Open("./fixtures/domains-Search.json")
-		if err != nil {
-			http.Error(rw, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer func() { _ = file.Close() }()
-
-		_, err = io.Copy(rw, file)
-		if err != nil {
-			http.Error(rw, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	})
-
-	data, err := client.Domains.Search(context.Background(), Exact, "lego.wtf")
+	data, err := client.Domains.Search(t.Context(), Exact, "lego.wtf")
 	require.NoError(t, err)
 
 	expected := []Domain{

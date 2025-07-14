@@ -1,52 +1,44 @@
 package internal
 
 import (
-	"context"
-	"io"
-	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"testing"
 
+	"github.com/go-acme/lego/v4/platform/tester/servermock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func setupTest(t *testing.T, filename string) *Client {
-	t.Helper()
+func mockBuilder() *servermock.Builder[*Client] {
+	return servermock.NewBuilder[*Client](
+		func(server *httptest.Server) (*Client, error) {
+			client, err := NewClient("user", "secret")
+			if err != nil {
+				return nil, err
+			}
 
-	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-		file, err := os.Open(filepath.Join("fixtures", filename))
-		if err != nil {
-			http.Error(rw, err.Error(), http.StatusInternalServerError)
-			return
-		}
+			client.HTTPClient = server.Client()
+			client.baseURL = server.URL
 
-		defer func() { _ = file.Close() }()
-
-		rw.WriteHeader(http.StatusOK)
-		_, err = io.Copy(rw, file)
-		if err != nil {
-			http.Error(rw, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	}))
-	t.Cleanup(server.Close)
-
-	client, err := NewClient("test_user", "apiKey")
-	require.NoError(t, err)
-
-	client.HTTPClient = server.Client()
-	client.baseURL = server.URL
-
-	return client
+			return client, nil
+		},
+		servermock.CheckHeader().
+			WithContentTypeFromURLEncoded())
 }
 
 func TestClient_StatusDomain(t *testing.T) {
-	client := setupTest(t, "status-domain.json")
+	client := mockBuilder().
+		Route("POST /", servermock.ResponseFromFixture("status-domain.json"),
+			servermock.CheckForm().Strict().
+				WithRegexp("signature", "[a-z0-9]+").
+				WithRegexp("timestamp", `\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z`).
+				With("command", "statusDomain").
+				With("user", "user").
+				With("domain", "example.com"),
+		).
+		Build(t)
 
-	domain, err := client.StatusDomain(context.Background(), "example.com")
+	domain, err := client.StatusDomain(t.Context(), "example.com")
 	require.NoError(t, err)
 
 	expected := &StatusResponse{
@@ -80,16 +72,28 @@ func TestClient_StatusDomain(t *testing.T) {
 }
 
 func TestClient_StatusDomain_error(t *testing.T) {
-	client := setupTest(t, "error.json")
+	client := mockBuilder().
+		Route("POST /", servermock.ResponseFromFixture("error.json")).
+		Build(t)
 
-	_, err := client.StatusDomain(context.Background(), "example.com")
+	_, err := client.StatusDomain(t.Context(), "example.com")
 	require.ErrorIs(t, err, APIError{Code: 402, Status: "error", Message: "Invalid user."})
 }
 
 func TestClient_ListRecords(t *testing.T) {
-	client := setupTest(t, "list-records.json")
+	client := mockBuilder().
+		Route("POST /", servermock.ResponseFromFixture("list-records.json"),
+			servermock.CheckForm().Strict().
+				WithRegexp("signature", "[a-z0-9]+").
+				WithRegexp("timestamp", `\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z`).
+				With("account", "example").
+				With("command", "listDNSRR").
+				With("user", "user").
+				With("dnszone", "example.com"),
+		).
+		Build(t)
 
-	resp, err := client.ListRecords(context.Background(), "example", "example.com")
+	resp, err := client.ListRecords(t.Context(), "example", "example.com")
 	require.NoError(t, err)
 
 	expected := &ListRecordsResponse{
@@ -106,14 +110,28 @@ func TestClient_ListRecords(t *testing.T) {
 }
 
 func TestClient_ListRecords_error(t *testing.T) {
-	client := setupTest(t, "error.json")
+	client := mockBuilder().
+		Route("POST /", servermock.ResponseFromFixture("error.json")).
+		Build(t)
 
-	_, err := client.ListRecords(context.Background(), "example", "example.com")
+	_, err := client.ListRecords(t.Context(), "example", "example.com")
 	require.ErrorIs(t, err, APIError{Code: 402, Status: "error", Message: "Invalid user."})
 }
 
 func TestClient_AddRecord(t *testing.T) {
-	client := setupTest(t, "add-record.json")
+	client := mockBuilder().
+		Route("POST /", servermock.ResponseFromFixture("add-record.json"),
+			servermock.CheckForm().Strict().
+				WithRegexp("signature", "[a-z0-9]+").
+				WithRegexp("timestamp", `\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z`).
+				With("account", "test").
+				With("command", "addDNSRR").
+				With("key", "2565").
+				With("user", "user").
+				With("rrdata", "example.com 600 IN TXT txttxttxt").
+				With("dnszone", "example.com"),
+		).
+		Build(t)
 
 	testRecord := Record{
 		ID:      2565,
@@ -122,7 +140,7 @@ func TestClient_AddRecord(t *testing.T) {
 		Content: "txttxttxt",
 		TTL:     600,
 	}
-	resp, err := client.AddRecord(context.Background(), "example.com", "test", "2565", testRecord)
+	resp, err := client.AddRecord(t.Context(), "example.com", "test", "2565", testRecord)
 	require.NoError(t, err)
 
 	expected := &AddRecord{
@@ -140,7 +158,9 @@ func TestClient_AddRecord(t *testing.T) {
 }
 
 func TestClient_AddRecord_error(t *testing.T) {
-	client := setupTest(t, "error.json")
+	client := mockBuilder().
+		Route("POST /", servermock.ResponseFromFixture("error.json")).
+		Build(t)
 
 	testRecord := Record{
 		ID:      2565,
@@ -150,20 +170,34 @@ func TestClient_AddRecord_error(t *testing.T) {
 		TTL:     600,
 	}
 
-	_, err := client.AddRecord(context.Background(), "example.com", "test", "2565", testRecord)
+	_, err := client.AddRecord(t.Context(), "example.com", "test", "2565", testRecord)
 	require.ErrorIs(t, err, APIError{Code: 402, Status: "error", Message: "Invalid user."})
 }
 
 func TestClient_DeleteRecord(t *testing.T) {
-	client := setupTest(t, "delete-record.json")
+	client := mockBuilder().
+		Route("POST /", servermock.ResponseFromFixture("delete-record.json"),
+			servermock.CheckForm().Strict().
+				WithRegexp("signature", "[a-z0-9]+").
+				WithRegexp("timestamp", `\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z`).
+				With("account", "test").
+				With("command", "deleteDNSRR").
+				With("key", "2374").
+				With("user", "user").
+				With("rrdata", "example.com 600 IN TXT txttxttxt").
+				With("dnszone", "example.com"),
+		).
+		Build(t)
 
-	err := client.DeleteRecord(context.Background(), "example.com", "test", "example.com 600 IN TXT txttxttxt", "2374")
+	err := client.DeleteRecord(t.Context(), "example.com", "test", "example.com 600 IN TXT txttxttxt", "2374")
 	require.NoError(t, err)
 }
 
 func TestClient_DeleteRecord_error(t *testing.T) {
-	client := setupTest(t, "error.json")
+	client := mockBuilder().
+		Route("POST /", servermock.ResponseFromFixture("error.json")).
+		Build(t)
 
-	err := client.DeleteRecord(context.Background(), "example.com", "test", "example.com 600 IN TXT txttxttxt", "2374")
+	err := client.DeleteRecord(t.Context(), "example.com", "test", "example.com 600 IN TXT txttxttxt", "2374")
 	require.ErrorIs(t, err, APIError{Code: 402, Status: "error", Message: "Invalid user."})
 }

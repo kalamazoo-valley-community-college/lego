@@ -1,75 +1,36 @@
 package internal
 
 import (
-	"context"
-	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
-	"path/filepath"
 	"testing"
 
+	"github.com/go-acme/lego/v4/platform/tester/servermock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func setupTest(t *testing.T, pattern string, handler http.HandlerFunc) *Client {
-	t.Helper()
+func mockBuilder() *servermock.Builder[*Client] {
+	return servermock.NewBuilder[*Client](
+		func(server *httptest.Server) (*Client, error) {
+			client := NewClient("secret")
+			client.HTTPClient = server.Client()
+			client.baseURL, _ = url.Parse(server.URL)
 
-	mux := http.NewServeMux()
-	server := httptest.NewServer(mux)
-	t.Cleanup(server.Close)
-
-	mux.HandleFunc(pattern, handler)
-
-	client := NewClient("secret")
-	client.HTTPClient = server.Client()
-	client.baseURL, _ = url.Parse(server.URL)
-
-	return client
-}
-
-func testHandler(method string, statusCode int, filename string) http.HandlerFunc {
-	return func(rw http.ResponseWriter, req *http.Request) {
-		if req.Method != method {
-			http.Error(rw, fmt.Sprintf(`{"message":"unsupported method: %s"}`, req.Method), http.StatusMethodNotAllowed)
-			return
-		}
-
-		auth := req.Header.Get(authorizationHeader)
-		if auth != "Bearer secret" {
-			http.Error(rw, fmt.Sprintf("invalid API Token: %s", auth), http.StatusUnauthorized)
-			return
-		}
-
-		rw.WriteHeader(statusCode)
-
-		if statusCode == http.StatusNoContent {
-			return
-		}
-
-		file, err := os.Open(filepath.Join("fixtures", filename))
-		if err != nil {
-			http.Error(rw, fmt.Sprintf(`{"message":"%v"}`, err), http.StatusInternalServerError)
-			return
-		}
-
-		defer func() { _ = file.Close() }()
-
-		_, err = io.Copy(rw, file)
-		if err != nil {
-			http.Error(rw, fmt.Sprintf(`{"message":"%v"}`, err), http.StatusInternalServerError)
-			return
-		}
-	}
+			return client, nil
+		},
+		servermock.CheckHeader().WithJSONHeaders().
+			WithAuthorization("Bearer secret"),
+	)
 }
 
 func TestClient_ListDomains(t *testing.T) {
-	client := setupTest(t, "/domains", testHandler(http.MethodGet, http.StatusOK, "domain-list-domains.json"))
+	client := mockBuilder().
+		Route("GET /domains", servermock.ResponseFromFixture("domain-list-domains.json")).
+		Build(t)
 
-	domains, err := client.ListDomains(context.Background())
+	domains, err := client.ListDomains(t.Context())
 	require.NoError(t, err)
 
 	require.Len(t, domains, 1)
@@ -84,16 +45,22 @@ func TestClient_ListDomains(t *testing.T) {
 }
 
 func TestClient_ListDomains_error(t *testing.T) {
-	client := setupTest(t, "/domains", testHandler(http.MethodGet, http.StatusBadRequest, "error-client.json"))
+	client := mockBuilder().
+		Route("GET /domains",
+			servermock.ResponseFromFixture("error-client.json").
+				WithStatusCode(http.StatusBadRequest)).
+		Build(t)
 
-	_, err := client.ListDomains(context.Background())
+	_, err := client.ListDomains(t.Context())
 	require.EqualError(t, err, "[status code 400] ValidationError: Validation failed [format: should be string (.address.street, email)]")
 }
 
 func TestClient_ListDNSZones(t *testing.T) {
-	client := setupTest(t, "/projects/my-project-id/dns-zones", testHandler(http.MethodGet, http.StatusOK, "dns-list-dns-zones.json"))
+	client := mockBuilder().
+		Route("GET /projects/my-project-id/dns-zones", servermock.ResponseFromFixture("dns-list-dns-zones.json")).
+		Build(t)
 
-	zones, err := client.ListDNSZones(context.Background(), "my-project-id")
+	zones, err := client.ListDNSZones(t.Context(), "my-project-id")
 	require.NoError(t, err)
 
 	require.Len(t, zones, 1)
@@ -110,9 +77,11 @@ func TestClient_ListDNSZones(t *testing.T) {
 }
 
 func TestClient_GetDNSZone(t *testing.T) {
-	client := setupTest(t, "/dns-zones/my-zone-id", testHandler(http.MethodGet, http.StatusOK, "dns-get-dns-zone.json"))
+	client := mockBuilder().
+		Route("GET /dns-zones/my-zone-id", servermock.ResponseFromFixture("dns-get-dns-zone.json")).
+		Build(t)
 
-	zone, err := client.GetDNSZone(context.Background(), "my-zone-id")
+	zone, err := client.GetDNSZone(t.Context(), "my-zone-id")
 	require.NoError(t, err)
 
 	expected := &DNSZone{
@@ -127,14 +96,18 @@ func TestClient_GetDNSZone(t *testing.T) {
 }
 
 func TestClient_CreateDNSZone(t *testing.T) {
-	client := setupTest(t, "/dns-zones", testHandler(http.MethodPost, http.StatusCreated, "dns-create-dns-zone.json"))
+	client := mockBuilder().
+		Route("POST /dns-zones",
+			servermock.ResponseFromFixture("dns-create-dns-zone.json"),
+			servermock.CheckRequestJSONBody(`{"name":"test","parentZoneId":"my-parent-zone-id"}`)).
+		Build(t)
 
 	request := CreateDNSZoneRequest{
 		Name:         "test",
 		ParentZoneID: "my-parent-zone-id",
 	}
 
-	zone, err := client.CreateDNSZone(context.Background(), request)
+	zone, err := client.CreateDNSZone(t.Context(), request)
 	require.NoError(t, err)
 
 	expected := &DNSZone{
@@ -145,7 +118,12 @@ func TestClient_CreateDNSZone(t *testing.T) {
 }
 
 func TestClient_UpdateTXTRecord(t *testing.T) {
-	client := setupTest(t, "/dns-zones/my-zone-id/record-sets/txt", testHandler(http.MethodPut, http.StatusNoContent, ""))
+	client := mockBuilder().
+		Route("PUT /dns-zones/my-zone-id/record-sets/txt",
+			servermock.Noop().
+				WithStatusCode(http.StatusNoContent),
+			servermock.CheckRequestJSONBody(`{"settings":{"ttl":{"auto":true}},"entries":["txt"]}`)).
+		Build(t)
 
 	record := TXTRecord{
 		Settings: Settings{
@@ -154,20 +132,27 @@ func TestClient_UpdateTXTRecord(t *testing.T) {
 		Entries: []string{"txt"},
 	}
 
-	err := client.UpdateTXTRecord(context.Background(), "my-zone-id", record)
+	err := client.UpdateTXTRecord(t.Context(), "my-zone-id", record)
 	require.NoError(t, err)
 }
 
 func TestClient_DeleteDNSZone(t *testing.T) {
-	client := setupTest(t, "/dns-zones/my-zone-id", testHandler(http.MethodDelete, http.StatusOK, ""))
+	client := mockBuilder().
+		Route("DELETE /dns-zones/my-zone-id",
+			servermock.Noop()).
+		Build(t)
 
-	err := client.DeleteDNSZone(context.Background(), "my-zone-id")
+	err := client.DeleteDNSZone(t.Context(), "my-zone-id")
 	require.NoError(t, err)
 }
 
 func TestClient_DeleteDNSZone_error(t *testing.T) {
-	client := setupTest(t, "/dns-zones/my-zone-id", testHandler(http.MethodDelete, http.StatusInternalServerError, "error.json"))
+	client := mockBuilder().
+		Route("DELETE /dns-zones/my-zone-id",
+			servermock.ResponseFromFixture("error.json").
+				WithStatusCode(http.StatusInternalServerError)).
+		Build(t)
 
-	err := client.DeleteDNSZone(context.Background(), "my-zone-id")
+	err := client.DeleteDNSZone(t.Context(), "my-zone-id")
 	assert.EqualError(t, err, "[status code 500] InternalServerError: Something went wrong")
 }

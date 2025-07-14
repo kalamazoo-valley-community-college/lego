@@ -7,44 +7,33 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/go-acme/lego/v4/platform/tester/servermock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func setupTest(t *testing.T) (*Client, *http.ServeMux) {
-	t.Helper()
+func mockBuilder() *servermock.Builder[*Client] {
+	return servermock.NewBuilder[*Client](
+		func(server *httptest.Server) (*Client, error) {
+			client := NewClient(context.Background(), "STACK_ID", "CLIENT_ID", "CLIENT_SECRET")
+			client.httpClient = server.Client()
+			client.baseURL, _ = url.Parse(server.URL + "/")
 
-	mux := http.NewServeMux()
-	server := httptest.NewServer(mux)
-	t.Cleanup(server.Close)
-
-	client := NewClient(context.Background(), "STACK_ID", "CLIENT_ID", "CLIENT_SECRET")
-	client.httpClient = server.Client()
-	client.baseURL, _ = url.Parse(server.URL + "/")
-
-	return client, mux
+			return client, nil
+		},
+		servermock.CheckHeader().WithJSONHeaders(),
+	)
 }
 
 func TestClient_GetZoneRecords(t *testing.T) {
-	client, mux := setupTest(t)
+	client := mockBuilder().
+		Route("GET /STACK_ID/zones/A/records",
+			servermock.ResponseFromFixture("get_zone_records.json"),
+			servermock.CheckQueryParameter().Strict().
+				With("page_request.filter", "name='foo1' and type='TXT'")).
+		Build(t)
 
-	mux.HandleFunc("/STACK_ID/zones/A/records", func(w http.ResponseWriter, _ *http.Request) {
-		content := `
-			{
-				"records": [
-					{"id":"1","name":"foo1","type":"TXT","ttl":120,"data":"txtTXTtxt"},
-					{"id":"2","name":"foo2","type":"TXT","ttl":121,"data":"TXTtxtTXT"}
-				]
-			}`
-
-		_, err := w.Write([]byte(content))
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	})
-
-	records, err := client.GetZoneRecords(context.Background(), "foo1", &Zone{ID: "A", Domain: "test"})
+	records, err := client.GetZoneRecords(t.Context(), "foo1", &Zone{ID: "A", Domain: "test"})
 	require.NoError(t, err)
 
 	expected := []Record{
@@ -56,73 +45,30 @@ func TestClient_GetZoneRecords(t *testing.T) {
 }
 
 func TestClient_GetZoneRecords_apiError(t *testing.T) {
-	client, mux := setupTest(t)
-
-	mux.HandleFunc("/STACK_ID/zones/A/records", func(w http.ResponseWriter, _ *http.Request) {
-		content := `
+	client := mockBuilder().
+		Route("GET /STACK_ID/zones/A/records",
+			servermock.RawStringResponse(`
 {
 	"code": 401,
 	"error": "an unauthorized request is attempted."
-}`
+}`).WithStatusCode(http.StatusUnauthorized)).
+		Build(t)
 
-		w.WriteHeader(http.StatusUnauthorized)
-		_, err := w.Write([]byte(content))
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	})
-
-	_, err := client.GetZoneRecords(context.Background(), "foo1", &Zone{ID: "A", Domain: "test"})
+	_, err := client.GetZoneRecords(t.Context(), "foo1", &Zone{ID: "A", Domain: "test"})
 
 	expected := &ErrorResponse{Code: 401, Message: "an unauthorized request is attempted."}
 	assert.Equal(t, expected, err)
 }
 
 func TestClient_GetZones(t *testing.T) {
-	client, mux := setupTest(t)
+	client := mockBuilder().
+		Route("GET /STACK_ID/zones",
+			servermock.ResponseFromFixture("get_zones.json"),
+			servermock.CheckQueryParameter().Strict().
+				With("page_request.filter", "domain='foo.com'")).
+		Build(t)
 
-	mux.HandleFunc("/STACK_ID/zones", func(w http.ResponseWriter, _ *http.Request) {
-		content := `
-{
-  "pageInfo": {
-    "totalCount": "5",
-    "hasPreviousPage": false,
-    "hasNextPage": false,
-    "startCursor": "1",
-    "endCursor": "1"
-  },
-  "zones": [
-    {
-      "stackId": "my_stack",
-      "accountId": "my_account",
-      "id": "A",
-      "domain": "foo.com",
-      "version": "1",
-      "labels": {
-        "property1": "val1",
-        "property2": "val2"
-      },
-      "created": "2018-10-07T02:31:49Z",
-      "updated": "2018-10-07T02:31:49Z",
-      "nameservers": [
-        "1.1.1.1"
-      ],
-      "verified": "2018-10-07T02:31:49Z",
-      "status": "ACTIVE",
-      "disabled": false
-    }
-  ]
-}`
-
-		_, err := w.Write([]byte(content))
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	})
-
-	zone, err := client.GetZones(context.Background(), "sub.foo.com")
+	zone, err := client.GetZones(t.Context(), "sub.foo.com")
 	require.NoError(t, err)
 
 	expected := &Zone{ID: "A", Domain: "foo.com"}

@@ -1,7 +1,7 @@
 package lightsail
 
 import (
-	"context"
+	"net/http/httptest"
 	"os"
 	"testing"
 
@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/lightsail"
 	"github.com/go-acme/lego/v4/platform/tester"
+	"github.com/go-acme/lego/v4/platform/tester/servermock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -31,20 +32,6 @@ var envTest = tester.NewEnvTest(
 	WithDomain(EnvDNSZone).
 	WithLiveTestRequirements(envAwsAccessKeyID, envAwsSecretAccessKey, EnvDNSZone)
 
-func makeProvider(serverURL string) *DNSProvider {
-	config := aws.Config{
-		Credentials:      credentials.NewStaticCredentialsProvider("abc", "123", " "),
-		Region:           "mock-region",
-		BaseEndpoint:     aws.String(serverURL),
-		RetryMaxAttempts: 1,
-	}
-
-	return &DNSProvider{
-		client: lightsail.NewFromConfig(config),
-		config: NewDefaultConfig(),
-	}
-}
-
 func TestCredentialsFromEnv(t *testing.T) {
 	defer envTest.RestoreEnv()
 	envTest.ClearEnv()
@@ -53,7 +40,7 @@ func TestCredentialsFromEnv(t *testing.T) {
 	_ = os.Setenv(envAwsSecretAccessKey, "123")
 	_ = os.Setenv(envAwsRegion, "us-east-1")
 
-	ctx := context.Background()
+	ctx := t.Context()
 	cfg, err := awsconfig.LoadDefaultConfig(ctx)
 	require.NoError(t, err)
 
@@ -69,13 +56,20 @@ func TestCredentialsFromEnv(t *testing.T) {
 }
 
 func TestDNSProvider_Present(t *testing.T) {
-	mockResponses := map[string]MockResponse{
-		"/": {StatusCode: 200, Body: ""},
-	}
-
-	serverURL := newMockServer(t, mockResponses)
-
-	provider := makeProvider(serverURL)
+	provider := servermock.NewBuilder(
+		func(server *httptest.Server) (*DNSProvider, error) {
+			return &DNSProvider{
+				client: lightsail.NewFromConfig(aws.Config{
+					Credentials:      credentials.NewStaticCredentialsProvider("abc", "123", " "),
+					Region:           "mock-region",
+					BaseEndpoint:     aws.String(server.URL),
+					RetryMaxAttempts: 1,
+				}),
+				config: NewDefaultConfig(),
+			}, nil
+		}).
+		Route("POST /", nil).
+		Build(t)
 
 	domain := "example.com"
 	keyAuth := "123456d=="

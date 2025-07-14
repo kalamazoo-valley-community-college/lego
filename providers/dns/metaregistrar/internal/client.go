@@ -16,6 +16,8 @@ import (
 
 const defaultBaseURL = "https://api.metaregistrar.com"
 
+const tokenHeader = "token"
+
 // Client is a client to interact with the Metaregistrar API.
 type Client struct {
 	token string
@@ -42,7 +44,7 @@ func NewClient(token string) (*Client, error) {
 // UpdateDNSZone updates the DNS zone for a domain.
 // To add or remove a TXT record we make a PATCH request.
 // https://metaregistrar.dev/docu/metaapi/requests/patch_Update_dns_zone.html
-func (c Client) UpdateDNSZone(ctx context.Context, domain string, updateRequest DNSZoneUpdateRequest) (*DNSZoneUpdateResponse, error) {
+func (c *Client) UpdateDNSZone(ctx context.Context, domain string, updateRequest DNSZoneUpdateRequest) (*DNSZoneUpdateResponse, error) {
 	endpoint := c.baseURL.JoinPath("dnszone", domain)
 
 	req, err := newJSONRequest(ctx, http.MethodPatch, endpoint, updateRequest)
@@ -60,8 +62,8 @@ func (c Client) UpdateDNSZone(ctx context.Context, domain string, updateRequest 
 	return result, nil
 }
 
-func (c Client) do(req *http.Request, result any) error {
-	req.Header.Add("token", c.token)
+func (c *Client) do(req *http.Request, result any) error {
+	req.Header.Add(tokenHeader, c.token)
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {

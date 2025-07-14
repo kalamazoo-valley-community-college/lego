@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	egoscale "github.com/exoscale/egoscale/v3"
@@ -206,7 +207,7 @@ func (d *DNSProvider) findExistingZone(zoneName string) (*egoscale.DNSDomain, er
 
 // findExistingRecordID Query Exoscale to find an existing record for this name.
 // Returns empty result if no record could be found.
-func (d *DNSProvider) findExistingRecordID(zoneID egoscale.UUID, recordName string, value string) (egoscale.UUID, error) {
+func (d *DNSProvider) findExistingRecordID(zoneID egoscale.UUID, recordName, value string) (egoscale.UUID, error) {
 	ctx := context.Background()
 
 	records, err := d.client.ListDNSDomainRecords(ctx, zoneID)
@@ -215,7 +216,8 @@ func (d *DNSProvider) findExistingRecordID(zoneID egoscale.UUID, recordName stri
 	}
 
 	for _, record := range records.DNSDomainRecords {
-		if record.Name == recordName && record.Type == egoscale.DNSDomainRecordTypeTXT && record.Content == value {
+		if record.Name == recordName && record.Type == egoscale.DNSDomainRecordTypeTXT &&
+			(record.Content == value || record.Content == strconv.Quote(value)) {
 			return record.ID, nil
 		}
 	}

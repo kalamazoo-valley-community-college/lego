@@ -1,72 +1,38 @@
 package internal
 
 import (
-	"context"
-	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
-	"path/filepath"
 	"testing"
 
+	"github.com/go-acme/lego/v4/platform/tester/servermock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 const apiKey = "secret"
 
-func setupTest(t *testing.T) (*Client, *http.ServeMux) {
-	t.Helper()
+func mockBuilder() *servermock.Builder[*Client] {
+	return servermock.NewBuilder[*Client](
+		func(server *httptest.Server) (*Client, error) {
+			client := NewClient(apiKey)
+			client.baseURL, _ = url.Parse(server.URL)
+			client.HTTPClient = server.Client()
 
-	mux := http.NewServeMux()
-	server := httptest.NewServer(mux)
-	t.Cleanup(server.Close)
-
-	client := NewClient(apiKey)
-	client.baseURL, _ = url.Parse(server.URL)
-
-	return client, mux
-}
-
-func testHandler(filename string, method string, statusCode int) http.HandlerFunc {
-	return func(rw http.ResponseWriter, req *http.Request) {
-		if req.Method != method {
-			http.Error(rw, fmt.Sprintf("unsupported method: %s", req.Method), http.StatusMethodNotAllowed)
-			return
-		}
-
-		username, key, ok := req.BasicAuth()
-		if username != "api" || key != apiKey || !ok {
-			http.Error(rw, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
-			return
-		}
-
-		file, err := os.Open(filepath.Join("fixtures", filename))
-		if err != nil {
-			http.Error(rw, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		defer func() { _ = file.Close() }()
-
-		rw.WriteHeader(statusCode)
-
-		_, err = io.Copy(rw, file)
-		if err != nil {
-			http.Error(rw, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	}
+			return client, nil
+		},
+		servermock.CheckHeader().WithJSONHeaders().
+			WithBasicAuth("api", apiKey),
+	)
 }
 
 func TestClient_GetDomains(t *testing.T) {
-	client, mux := setupTest(t)
+	client := mockBuilder().
+		Route("GET /domains.json", servermock.ResponseFromFixture("get-domains.json")).
+		Build(t)
 
-	mux.HandleFunc("/domains.json", testHandler("get-domains.json", http.MethodGet, http.StatusOK))
-
-	domains, err := client.GetDomains(context.Background())
+	domains, err := client.GetDomains(t.Context())
 	require.NoError(t, err)
 
 	expected := []Domain{{
@@ -80,20 +46,22 @@ func TestClient_GetDomains(t *testing.T) {
 }
 
 func TestClient_GetDomains_error(t *testing.T) {
-	client, mux := setupTest(t)
+	client := mockBuilder().
+		Route("GET /domains.json",
+			servermock.ResponseFromFixture("error.json").
+				WithStatusCode(http.StatusBadRequest)).
+		Build(t)
 
-	mux.HandleFunc("/domains.json", testHandler("error.json", http.MethodGet, http.StatusBadRequest))
-
-	_, err := client.GetDomains(context.Background())
+	_, err := client.GetDomains(t.Context())
 	require.EqualError(t, err, "[status code: 400] status: invalid_resource, details: name: [muss ausgefüllt werden]")
 }
 
 func TestClient_GetRecords(t *testing.T) {
-	client, mux := setupTest(t)
+	client := mockBuilder().
+		Route("GET /domains/123/records.json", servermock.ResponseFromFixture("get-records.json")).
+		Build(t)
 
-	mux.HandleFunc("/domains/123/records.json", testHandler("get-records.json", http.MethodGet, http.StatusOK))
-
-	records, err := client.GetRecords(context.Background(), 123)
+	records, err := client.GetRecords(t.Context(), 123)
 	require.NoError(t, err)
 
 	expected := []Record{
@@ -116,18 +84,22 @@ func TestClient_GetRecords(t *testing.T) {
 }
 
 func TestClient_GetRecords_error(t *testing.T) {
-	client, mux := setupTest(t)
+	client := mockBuilder().
+		Route("GET /domains/123/records.json",
+			servermock.ResponseFromFixture("error.json").
+				WithStatusCode(http.StatusBadRequest)).
+		Build(t)
 
-	mux.HandleFunc("/domains/123/records.json", testHandler("error.json", http.MethodGet, http.StatusBadRequest))
-
-	_, err := client.GetRecords(context.Background(), 123)
+	_, err := client.GetRecords(t.Context(), 123)
 	require.EqualError(t, err, "[status code: 400] status: invalid_resource, details: name: [muss ausgefüllt werden]")
 }
 
 func TestClient_AddRecord(t *testing.T) {
-	client, mux := setupTest(t)
-
-	mux.HandleFunc("/domains/123/records.json", testHandler("ok.json", http.MethodPost, http.StatusOK))
+	client := mockBuilder().
+		Route("POST /domains/123/records.json",
+			servermock.ResponseFromFixture("ok.json"),
+			servermock.CheckRequestJSONBody(`{"nameserver_record":{"name":"foo","content":"bar","ttl":12,"type":"TXT"}}`)).
+		Build(t)
 
 	record := Record{
 		Name:    "foo",
@@ -136,14 +108,16 @@ func TestClient_AddRecord(t *testing.T) {
 		Type:    "TXT",
 	}
 
-	err := client.AddRecord(context.Background(), 123, record)
+	err := client.AddRecord(t.Context(), 123, record)
 	require.NoError(t, err)
 }
 
 func TestClient_AddRecord_error(t *testing.T) {
-	client, mux := setupTest(t)
-
-	mux.HandleFunc("/domains/123/records.json", testHandler("error.json", http.MethodPost, http.StatusBadRequest))
+	client := mockBuilder().
+		Route("POST /domains/123/records.json",
+			servermock.ResponseFromFixture("error.json").
+				WithStatusCode(http.StatusBadRequest)).
+		Build(t)
 
 	record := Record{
 		Name:    "foo",
@@ -152,42 +126,49 @@ func TestClient_AddRecord_error(t *testing.T) {
 		Type:    "TXT",
 	}
 
-	err := client.AddRecord(context.Background(), 123, record)
+	err := client.AddRecord(t.Context(), 123, record)
 	require.EqualError(t, err, "[status code: 400] status: invalid_resource, details: name: [muss ausgefüllt werden]")
 }
 
 func TestClient_UpdateRecord(t *testing.T) {
-	client, mux := setupTest(t)
+	client := mockBuilder().
+		Route("PUT /domains/123/records/456",
+			servermock.ResponseFromFixture("ok.json"),
+			servermock.CheckRequestJSONBody(`{"nameserver_record":{}}`)).
+		Build(t)
 
-	mux.HandleFunc("/domains/123/records/456", testHandler("ok.json", http.MethodPut, http.StatusOK))
-
-	err := client.UpdateRecord(context.Background(), 123, 456, Record{})
+	err := client.UpdateRecord(t.Context(), 123, 456, Record{})
 	require.NoError(t, err)
 }
 
 func TestClient_UpdateRecord_error(t *testing.T) {
-	client, mux := setupTest(t)
+	client := mockBuilder().
+		Route("PUT /domains/123/records/456",
+			servermock.ResponseFromFixture("error.json").
+				WithStatusCode(http.StatusBadRequest)).
+		Build(t)
 
-	mux.HandleFunc("/domains/123/records/456", testHandler("error.json", http.MethodPut, http.StatusBadRequest))
-
-	err := client.UpdateRecord(context.Background(), 123, 456, Record{})
+	err := client.UpdateRecord(t.Context(), 123, 456, Record{})
 	require.EqualError(t, err, "[status code: 400] status: invalid_resource, details: name: [muss ausgefüllt werden]")
 }
 
 func TestClient_DeleteRecord(t *testing.T) {
-	client, mux := setupTest(t)
+	client := mockBuilder().
+		Route("DELETE /domains/123/records/456",
+			servermock.ResponseFromFixture("ok.json")).
+		Build(t)
 
-	mux.HandleFunc("/domains/123/records/456", testHandler("ok.json", http.MethodDelete, http.StatusOK))
-
-	err := client.DeleteRecord(context.Background(), 123, 456)
+	err := client.DeleteRecord(t.Context(), 123, 456)
 	require.NoError(t, err)
 }
 
 func TestClient_DeleteRecord_error(t *testing.T) {
-	client, mux := setupTest(t)
+	client := mockBuilder().
+		Route("DELETE /domains/123/records/456",
+			servermock.ResponseFromFixture("error.json").
+				WithStatusCode(http.StatusBadRequest)).
+		Build(t)
 
-	mux.HandleFunc("/domains/123/records/456", testHandler("error.json", http.MethodDelete, http.StatusBadRequest))
-
-	err := client.DeleteRecord(context.Background(), 123, 456)
+	err := client.DeleteRecord(t.Context(), 123, 456)
 	require.EqualError(t, err, "[status code: 400] status: invalid_resource, details: name: [muss ausgefüllt werden]")
 }

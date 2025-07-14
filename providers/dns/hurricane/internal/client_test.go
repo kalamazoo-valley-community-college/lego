@@ -1,14 +1,20 @@
 package internal
 
 import (
-	"context"
-	"fmt"
-	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/go-acme/lego/v4/platform/tester/servermock"
 	"github.com/stretchr/testify/assert"
 )
+
+func setupClient(server *httptest.Server) (*Client, error) {
+	client := NewClient(map[string]string{"example.com": "secret"})
+	client.baseURL = server.URL
+	client.HTTPClient = server.Client()
+
+	return client, nil
+}
 
 func TestClient_UpdateTxtRecord(t *testing.T) {
 	testCases := []struct {
@@ -49,33 +55,16 @@ func TestClient_UpdateTxtRecord(t *testing.T) {
 		t.Run(test.code, func(t *testing.T) {
 			t.Parallel()
 
-			handler := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-				if req.Method != http.MethodPost {
-					http.Error(rw, fmt.Sprintf("unsupported method: %s", req.Method), http.StatusMethodNotAllowed)
-					return
-				}
+			client := servermock.NewBuilder[*Client](setupClient, servermock.CheckHeader().WithContentTypeFromURLEncoded()).
+				Route("POST /",
+					servermock.RawStringResponse(test.code),
+					servermock.CheckForm().Strict().
+						With("hostname", "_acme-challenge.example.com").
+						With("password", "secret").
+						With("txt", "foo")).
+				Build(t)
 
-				if err := req.ParseForm(); err != nil {
-					http.Error(rw, "failed to parse form data", http.StatusBadRequest)
-					return
-				}
-
-				if req.PostForm.Encode() != "hostname=_acme-challenge.example.com&password=secret&txt=foo" {
-					http.Error(rw, "invalid form data", http.StatusBadRequest)
-					return
-				}
-
-				_, _ = rw.Write([]byte(test.code))
-			})
-
-			server := httptest.NewServer(handler)
-			t.Cleanup(server.Close)
-
-			client := NewClient(map[string]string{"example.com": "secret"})
-			client.baseURL = server.URL
-			client.HTTPClient = server.Client()
-
-			err := client.UpdateTxtRecord(context.Background(), "_acme-challenge.example.com", "foo")
+			err := client.UpdateTxtRecord(t.Context(), "_acme-challenge.example.com", "foo")
 			test.expected(t, err)
 		})
 	}

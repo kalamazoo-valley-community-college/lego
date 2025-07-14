@@ -14,6 +14,8 @@ import (
 	"github.com/go-acme/lego/v4/providers/dns/internal/errutils"
 )
 
+const AuthToken = "X-Auth-Token"
+
 type Client struct {
 	token string
 
@@ -21,7 +23,7 @@ type Client struct {
 	HTTPClient *http.Client
 }
 
-func NewClient(endpoint string, token string) (*Client, error) {
+func NewClient(endpoint, token string) (*Client, error) {
 	baseURL, err := url.Parse(endpoint)
 	if err != nil {
 		return nil, err
@@ -34,7 +36,7 @@ func NewClient(endpoint string, token string) (*Client, error) {
 	}, nil
 }
 
-// AddRecord Adds one  record to a specified domain.
+// AddRecord Adds one record to a specified domain.
 // https://docs.rackspace.com/docs/cloud-dns/v1/api-reference/records#add-records
 func (c *Client) AddRecord(ctx context.Context, zoneID string, record Record) error {
 	endpoint := c.baseURL.JoinPath("domains", zoneID, "records")
@@ -120,7 +122,7 @@ func (c *Client) listDomainsByName(ctx context.Context, domain string) (*ZoneSea
 }
 
 // FindTxtRecord searches a DNS zone for a TXT record with a specific name.
-func (c *Client) FindTxtRecord(ctx context.Context, fqdn string, zoneID string) (*Record, error) {
+func (c *Client) FindTxtRecord(ctx context.Context, fqdn, zoneID string) (*Record, error) {
 	records, err := c.searchRecords(ctx, zoneID, dns01.UnFqdn(fqdn), "TXT")
 	if err != nil {
 		return nil, err
@@ -161,7 +163,7 @@ func (c *Client) searchRecords(ctx context.Context, zoneID, recordName, recordTy
 }
 
 func (c *Client) do(req *http.Request, result any) error {
-	req.Header.Set("X-Auth-Token", c.token)
+	req.Header.Set(AuthToken, c.token)
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
@@ -191,7 +193,7 @@ func (c *Client) do(req *http.Request, result any) error {
 	return nil
 }
 
-func newJSONRequest[T string | *url.URL](ctx context.Context, method string, endpoint T, payload interface{}) (*http.Request, error) {
+func newJSONRequest[T string | *url.URL](ctx context.Context, method string, endpoint T, payload any) (*http.Request, error) {
 	buf := new(bytes.Buffer)
 
 	if payload != nil {

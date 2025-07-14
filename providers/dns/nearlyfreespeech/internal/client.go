@@ -34,7 +34,7 @@ type Client struct {
 	HTTPClient *http.Client
 }
 
-func NewClient(login string, apiKey string) *Client {
+func NewClient(login, apiKey string) *Client {
 	baseURL, _ := url.Parse(apiURL)
 
 	return &Client{
@@ -46,7 +46,7 @@ func NewClient(login string, apiKey string) *Client {
 	}
 }
 
-func (c Client) AddRecord(ctx context.Context, domain string, record Record) error {
+func (c *Client) AddRecord(ctx context.Context, domain string, record Record) error {
 	endpoint := c.baseURL.JoinPath("dns", dns01.UnFqdn(domain), "addRR")
 
 	params, err := querystring.Values(record)
@@ -57,7 +57,7 @@ func (c Client) AddRecord(ctx context.Context, domain string, record Record) err
 	return c.doRequest(ctx, endpoint, params)
 }
 
-func (c Client) RemoveRecord(ctx context.Context, domain string, record Record) error {
+func (c *Client) RemoveRecord(ctx context.Context, domain string, record Record) error {
 	endpoint := c.baseURL.JoinPath("dns", dns01.UnFqdn(domain), "removeRR")
 
 	params, err := querystring.Values(record)
@@ -68,7 +68,7 @@ func (c Client) RemoveRecord(ctx context.Context, domain string, record Record) 
 	return c.doRequest(ctx, endpoint, params)
 }
 
-func (c Client) doRequest(ctx context.Context, endpoint *url.URL, params url.Values) error {
+func (c *Client) doRequest(ctx context.Context, endpoint *url.URL, params url.Values) error {
 	payload := params.Encode()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), strings.NewReader(payload))
@@ -114,7 +114,7 @@ func NewSigner() *Signer {
 	return &Signer{saltShaker: getRandomSalt, clock: time.Now}
 }
 
-func (c Signer) Sign(uri string, body, login, apiKey string) string {
+func (c Signer) Sign(uri, body, login, apiKey string) string {
 	// Header is "login;timestamp;salt;hash".
 	// hash is SHA1("login;timestamp;salt;api-key;request-uri;body-hash")
 	// and body-hash is SHA1(body).

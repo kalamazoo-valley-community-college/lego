@@ -1,16 +1,14 @@
 package internal
 
 import (
-	"context"
 	"fmt"
-	"io"
-	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"strconv"
 	"testing"
 
+	"github.com/go-acme/lego/v4/platform/tester/servermock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -22,8 +20,33 @@ const (
 	testPassword = "testpass"
 )
 
+func mockBuilder() *servermock.Builder[*Client] {
+	return servermock.NewBuilder[*Client](
+		func(server *httptest.Server) (*Client, error) {
+			client := NewClient(testAPIKey, testPassword)
+			client.baseURL, _ = url.Parse(server.URL)
+			client.HTTPClient = server.Client()
+
+			return client, nil
+		},
+		servermock.CheckHeader().
+			WithContentTypeFromURLEncoded(),
+	)
+}
+
 func TestClient_AddRecord(t *testing.T) {
-	client := setupTest(t, "/Domain/DnsRecord/Add", "./fixtures/Domain_DnsRecord_Add_SUCCESS.json")
+	client := mockBuilder().
+		Route("POST /Domain/DnsRecord/Add",
+			servermock.ResponseFromFixture("Domain_DnsRecord_Add_SUCCESS.json"),
+			servermock.CheckForm().Strict().
+				With("fullrecordname", "www.example.com").
+				With("ttl", "36000").
+				With("type", "TXT").
+				With("value", "xxx").
+				With("password", testPassword).
+				With("apiKey", testAPIKey).
+				With("ResponseFormat", "JSON")).
+		Build(t)
 
 	query := RecordQuery{
 		FullRecordName: "www.example.com",
@@ -32,12 +55,15 @@ func TestClient_AddRecord(t *testing.T) {
 		TTL:            36000,
 	}
 
-	err := client.AddRecord(context.Background(), query)
+	err := client.AddRecord(t.Context(), query)
 	require.NoError(t, err)
 }
 
 func TestClient_AddRecord_error(t *testing.T) {
-	client := setupTest(t, "/Domain/DnsRecord/Add", "./fixtures/Domain_DnsRecord_Add_FAILURE.json")
+	client := mockBuilder().
+		Route("POST /Domain/DnsRecord/Add",
+			servermock.ResponseFromFixture("Domain_DnsRecord_Add_FAILURE.json")).
+		Build(t)
 
 	query := RecordQuery{
 		FullRecordName: "www.example.com.",
@@ -46,7 +72,7 @@ func TestClient_AddRecord_error(t *testing.T) {
 		TTL:            36000,
 	}
 
-	err := client.AddRecord(context.Background(), query)
+	err := client.AddRecord(t.Context(), query)
 	require.Error(t, err)
 }
 
@@ -67,7 +93,7 @@ func TestClient_AddRecord_integration(t *testing.T) {
 		TTL:            36000,
 	}
 
-	err := client.AddRecord(context.Background(), query)
+	err := client.AddRecord(t.Context(), query)
 	require.NoError(t, err)
 
 	query = RecordQuery{
@@ -77,31 +103,43 @@ func TestClient_AddRecord_integration(t *testing.T) {
 		TTL:            36000,
 	}
 
-	err = client.AddRecord(context.Background(), query)
+	err = client.AddRecord(t.Context(), query)
 	require.NoError(t, err)
 }
 
 func TestClient_RemoveRecord(t *testing.T) {
-	client := setupTest(t, "/Domain/DnsRecord/Remove", "./fixtures/Domain_DnsRecord_Remove_SUCCESS.json")
+	client := mockBuilder().
+		Route("POST /Domain/DnsRecord/Remove",
+			servermock.ResponseFromFixture("Domain_DnsRecord_Remove_SUCCESS.json"),
+			servermock.CheckForm().Strict().
+				With("fullrecordname", "www.example.com").
+				With("type", "TXT").
+				With("password", testPassword).
+				With("apiKey", testAPIKey).
+				With("ResponseFormat", "JSON")).
+		Build(t)
 
 	query := RecordQuery{
 		FullRecordName: "www.example.com",
 		Type:           "TXT",
 		Value:          "",
 	}
-	err := client.RemoveRecord(context.Background(), query)
+	err := client.RemoveRecord(t.Context(), query)
 	require.NoError(t, err)
 }
 
 func TestClient_RemoveRecord_error(t *testing.T) {
-	client := setupTest(t, "/Domain/DnsRecord/Remove", "./fixtures/Domain_DnsRecord_Remove_FAILURE.json")
+	client := mockBuilder().
+		Route("POST /Domain/DnsRecord/Remove",
+			servermock.ResponseFromFixture("Domain_DnsRecord_Remove_FAILURE.json")).
+		Build(t)
 
 	query := RecordQuery{
 		FullRecordName: "www.example.com.",
 		Type:           "TXT",
 		Value:          "",
 	}
-	err := client.RemoveRecord(context.Background(), query)
+	err := client.RemoveRecord(t.Context(), query)
 	require.Error(t, err)
 }
 
@@ -121,18 +159,26 @@ func TestClient_RemoveRecord_integration(t *testing.T) {
 		Value:          "",
 	}
 
-	err := client.RemoveRecord(context.Background(), query)
+	err := client.RemoveRecord(t.Context(), query)
 	require.NoError(t, err)
 }
 
 func TestClient_ListRecords(t *testing.T) {
-	client := setupTest(t, "/Domain/DnsRecord/List", "./fixtures/Domain_DnsRecord_List_SUCCESS.json")
+	client := mockBuilder().
+		Route("POST /Domain/DnsRecord/List",
+			servermock.ResponseFromFixture("Domain_DnsRecord_List_SUCCESS.json"),
+			servermock.CheckForm().Strict().
+				With("Domain", "example.com").
+				With("password", testPassword).
+				With("apiKey", testAPIKey).
+				With("ResponseFormat", "JSON")).
+		Build(t)
 
 	query := ListRecordQuery{
 		Domain: "example.com",
 	}
 
-	records, err := client.ListRecords(context.Background(), query)
+	records, err := client.ListRecords(t.Context(), query)
 	require.NoError(t, err)
 
 	expected := []Record{
@@ -178,13 +224,16 @@ func TestClient_ListRecords(t *testing.T) {
 }
 
 func TestClient_ListRecords_error(t *testing.T) {
-	client := setupTest(t, "/Domain/DnsRecord/List", "./fixtures/Domain_DnsRecord_List_FAILURE.json")
+	client := mockBuilder().
+		Route("POST /Domain/DnsRecord/List",
+			servermock.ResponseFromFixture("Domain_DnsRecord_List_FAILURE.json")).
+		Build(t)
 
 	query := ListRecordQuery{
 		Domain: "www.example.com",
 	}
 
-	_, err := client.ListRecords(context.Background(), query)
+	_, err := client.ListRecords(t.Context(), query)
 	require.Error(t, err)
 }
 
@@ -202,58 +251,10 @@ func TestClient_ListRecords_integration(t *testing.T) {
 		Domain: "example.com",
 	}
 
-	records, err := client.ListRecords(context.Background(), query)
+	records, err := client.ListRecords(t.Context(), query)
 	require.NoError(t, err)
 
 	for _, record := range records {
 		fmt.Println(record)
-	}
-}
-
-func setupTest(t *testing.T, path, filename string) *Client {
-	t.Helper()
-
-	mux := http.NewServeMux()
-	server := httptest.NewServer(mux)
-	t.Cleanup(server.Close)
-
-	mux.HandleFunc(path, testHandler(filename))
-
-	client := NewClient(testAPIKey, testPassword)
-	client.baseURL, _ = url.Parse(server.URL)
-
-	return client
-}
-
-func testHandler(filename string) http.HandlerFunc {
-	return func(rw http.ResponseWriter, req *http.Request) {
-		if req.Method != http.MethodPost {
-			http.Error(rw, fmt.Sprintf("unsupported method: %s", req.Method), http.StatusMethodNotAllowed)
-			return
-		}
-
-		if req.FormValue("apiKey") != testAPIKey {
-			http.Error(rw, `{"transactid":"d46d812569acdb8b39c3933ec4351e79","status":"FAILURE","message":"Invalid API key and\/or Password","code":107002}`, http.StatusOK)
-			return
-		}
-
-		if req.FormValue("password") != testPassword {
-			http.Error(rw, `{"transactid":"d46d812569acdb8b39c3933ec4351e79","status":"FAILURE","message":"Invalid API key and\/or Password","code":107002}`, http.StatusOK)
-			return
-		}
-
-		file, err := os.Open(filename)
-		if err != nil {
-			http.Error(rw, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		defer func() { _ = file.Close() }()
-
-		_, err = io.Copy(rw, file)
-		if err != nil {
-			http.Error(rw, err.Error(), http.StatusInternalServerError)
-			return
-		}
 	}
 }

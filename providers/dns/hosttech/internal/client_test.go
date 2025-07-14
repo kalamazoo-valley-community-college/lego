@@ -1,26 +1,40 @@
 package internal
 
 import (
-	"context"
-	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
-	"path/filepath"
 	"testing"
 
+	"github.com/go-acme/lego/v4/platform/tester/servermock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 const testAPIKey = "secret"
 
-func TestClient_GetZones(t *testing.T) {
-	client := setupTest(t, "/user/v1/zones", testHandler(http.MethodGet, http.StatusOK, "zones.json"))
+func mockBuilder() *servermock.Builder[*Client] {
+	return servermock.NewBuilder[*Client](
+		func(server *httptest.Server) (*Client, error) {
+			client := NewClient(OAuthStaticAccessToken(server.Client(), testAPIKey))
+			client.baseURL, _ = url.Parse(server.URL)
 
-	zones, err := client.GetZones(context.Background(), "", 100, 0)
+			return client, nil
+		},
+		servermock.CheckHeader().WithJSONHeaders().
+			WithAuthorization("Bearer secret"))
+}
+
+func TestClient_GetZones(t *testing.T) {
+	client := mockBuilder().
+		Route("GET /user/v1/zones",
+			servermock.ResponseFromFixture("zones.json"),
+			servermock.CheckQueryParameter().Strict().
+				With("limit", "100").
+				With("query", "")).
+		Build(t)
+
+	zones, err := client.GetZones(t.Context(), "", 100, 0)
 	require.NoError(t, err)
 
 	expected := []Zone{
@@ -39,16 +53,23 @@ func TestClient_GetZones(t *testing.T) {
 }
 
 func TestClient_GetZones_error(t *testing.T) {
-	client := setupTest(t, "/user/v1/zones", testHandler(http.MethodGet, http.StatusUnauthorized, "error.json"))
+	client := mockBuilder().
+		Route("GET /user/v1/zones",
+			servermock.ResponseFromFixture("error.json").
+				WithStatusCode(http.StatusUnauthorized)).
+		Build(t)
 
-	_, err := client.GetZones(context.Background(), "", 100, 0)
+	_, err := client.GetZones(t.Context(), "", 100, 0)
 	require.Error(t, err)
 }
 
 func TestClient_GetZone(t *testing.T) {
-	client := setupTest(t, "/user/v1/zones/123", testHandler(http.MethodGet, http.StatusOK, "zone.json"))
+	client := mockBuilder().
+		Route("GET /user/v1/zones/123",
+			servermock.ResponseFromFixture("zone.json")).
+		Build(t)
 
-	zone, err := client.GetZone(context.Background(), "123")
+	zone, err := client.GetZone(t.Context(), "123")
 	require.NoError(t, err)
 
 	expected := &Zone{
@@ -65,16 +86,25 @@ func TestClient_GetZone(t *testing.T) {
 }
 
 func TestClient_GetZone_error(t *testing.T) {
-	client := setupTest(t, "/user/v1/zones/123", testHandler(http.MethodGet, http.StatusUnauthorized, "error.json"))
+	client := mockBuilder().
+		Route("GET /user/v1/zones/123",
+			servermock.ResponseFromFixture("error.json").
+				WithStatusCode(http.StatusUnauthorized)).
+		Build(t)
 
-	_, err := client.GetZone(context.Background(), "123")
-	require.Error(t, err)
+	_, err := client.GetZone(t.Context(), "123")
+	require.EqualError(t, err, "401: Unauthenticated.")
 }
 
 func TestClient_GetRecords(t *testing.T) {
-	client := setupTest(t, "/user/v1/zones/123/records", testHandler(http.MethodGet, http.StatusOK, "records.json"))
+	client := mockBuilder().
+		Route("GET /user/v1/zones/123/records",
+			servermock.ResponseFromFixture("records.json"),
+			servermock.CheckQueryParameter().Strict().
+				With("type", "TXT")).
+		Build(t)
 
-	records, err := client.GetRecords(context.Background(), "123", "TXT")
+	records, err := client.GetRecords(t.Context(), "123", "TXT")
 	require.NoError(t, err)
 
 	expected := []Record{
@@ -152,14 +182,22 @@ func TestClient_GetRecords(t *testing.T) {
 }
 
 func TestClient_GetRecords_error(t *testing.T) {
-	client := setupTest(t, "/user/v1/zones/123/records", testHandler(http.MethodGet, http.StatusUnauthorized, "error.json"))
+	client := mockBuilder().
+		Route("GET /user/v1/zones/123/records",
+			servermock.ResponseFromFixture("error.json").
+				WithStatusCode(http.StatusUnauthorized)).
+		Build(t)
 
-	_, err := client.GetRecords(context.Background(), "123", "TXT")
-	require.Error(t, err)
+	_, err := client.GetRecords(t.Context(), "123", "TXT")
+	require.EqualError(t, err, "401: Unauthenticated.")
 }
 
 func TestClient_AddRecord(t *testing.T) {
-	client := setupTest(t, "/user/v1/zones/123/records", testHandler(http.MethodPost, http.StatusCreated, "record.json"))
+	client := mockBuilder().
+		Route("POST /user/v1/zones/123/records",
+			servermock.ResponseFromFixture("record.json").
+				WithStatusCode(http.StatusCreated)).
+		Build(t)
 
 	record := Record{
 		Type:    "TXT",
@@ -169,7 +207,7 @@ func TestClient_AddRecord(t *testing.T) {
 		Comment: "example",
 	}
 
-	newRecord, err := client.AddRecord(context.Background(), "123", record)
+	newRecord, err := client.AddRecord(t.Context(), "123", record)
 	require.NoError(t, err)
 
 	expected := &Record{
@@ -185,7 +223,11 @@ func TestClient_AddRecord(t *testing.T) {
 }
 
 func TestClient_AddRecord_error(t *testing.T) {
-	client := setupTest(t, "/user/v1/zones/123/records", testHandler(http.MethodPost, http.StatusUnauthorized, "error-details.json"))
+	client := mockBuilder().
+		Route("POST /user/v1/zones/123/records",
+			servermock.ResponseFromFixture("error-details.json").
+				WithStatusCode(http.StatusUnauthorized)).
+		Build(t)
 
 	record := Record{
 		Type:    "TXT",
@@ -195,69 +237,28 @@ func TestClient_AddRecord_error(t *testing.T) {
 		Comment: "example",
 	}
 
-	_, err := client.AddRecord(context.Background(), "123", record)
-	require.Error(t, err)
+	_, err := client.AddRecord(t.Context(), "123", record)
+	require.EqualError(t, err, "401: The given data was invalid. type: [Darf nicht leer sein.]")
 }
 
 func TestClient_DeleteRecord(t *testing.T) {
-	client := setupTest(t, "/user/v1/zones/123/records/6", testHandler(http.MethodDelete, http.StatusUnauthorized, "error.json"))
+	client := mockBuilder().
+		Route("DELETE /user/v1/zones/123/records/6",
+			servermock.Noop().WithStatusCode(http.StatusNoContent).
+				WithStatusCode(http.StatusCreated)).
+		Build(t)
 
-	err := client.DeleteRecord(context.Background(), "123", "6")
+	err := client.DeleteRecord(t.Context(), "123", "6")
 	require.Error(t, err)
 }
 
 func TestClient_DeleteRecord_error(t *testing.T) {
-	client := setupTest(t, "/user/v1/zones/123/records/6", testHandler(http.MethodDelete, http.StatusNoContent, ""))
+	client := mockBuilder().
+		Route("DELETE /user/v1/zones/123/records/6",
+			servermock.ResponseFromFixture("error.json").
+				WithStatusCode(http.StatusUnauthorized)).
+		Build(t)
 
-	err := client.DeleteRecord(context.Background(), "123", "6")
-	require.NoError(t, err)
-}
-
-func setupTest(t *testing.T, path string, handler http.Handler) *Client {
-	t.Helper()
-
-	mux := http.NewServeMux()
-	server := httptest.NewServer(mux)
-	t.Cleanup(server.Close)
-
-	mux.Handle(path, handler)
-
-	client := NewClient(OAuthStaticAccessToken(server.Client(), testAPIKey))
-	client.baseURL, _ = url.Parse(server.URL)
-
-	return client
-}
-
-func testHandler(method string, statusCode int, filename string) http.HandlerFunc {
-	return func(rw http.ResponseWriter, req *http.Request) {
-		if req.Method != method {
-			http.Error(rw, fmt.Sprintf(`{"message":"unsupported method: %s"}`, req.Method), http.StatusMethodNotAllowed)
-			return
-		}
-
-		if req.Header.Get("Authorization") != "Bearer "+testAPIKey {
-			http.Error(rw, `{"message":"Unauthenticated"}`, http.StatusUnauthorized)
-			return
-		}
-
-		rw.WriteHeader(statusCode)
-
-		if statusCode == http.StatusNoContent {
-			return
-		}
-
-		file, err := os.Open(filepath.Join("fixtures", filename))
-		if err != nil {
-			http.Error(rw, fmt.Sprintf(`{"message":"%v"}`, err), http.StatusInternalServerError)
-			return
-		}
-
-		defer func() { _ = file.Close() }()
-
-		_, err = io.Copy(rw, file)
-		if err != nil {
-			http.Error(rw, fmt.Sprintf(`{"message":"%v"}`, err), http.StatusInternalServerError)
-			return
-		}
-	}
+	err := client.DeleteRecord(t.Context(), "123", "6")
+	require.EqualError(t, err, "401: Unauthenticated.")
 }

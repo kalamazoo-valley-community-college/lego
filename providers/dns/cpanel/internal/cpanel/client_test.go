@@ -1,61 +1,40 @@
 package cpanel
 
 import (
-	"context"
-	"fmt"
-	"io"
-	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"testing"
 
+	"github.com/go-acme/lego/v4/platform/tester/servermock"
 	"github.com/go-acme/lego/v4/providers/dns/cpanel/internal/shared"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func setupTest(t *testing.T, pattern string, filename string) *Client {
-	t.Helper()
+func mockBuilder() *servermock.Builder[*Client] {
+	return servermock.NewBuilder[*Client](
+		func(server *httptest.Server) (*Client, error) {
+			client, err := NewClient(server.URL, "user", "secret")
+			if err != nil {
+				return nil, err
+			}
 
-	mux := http.NewServeMux()
-	server := httptest.NewServer(mux)
-	t.Cleanup(server.Close)
+			client.HTTPClient = server.Client()
 
-	mux.HandleFunc(pattern, func(rw http.ResponseWriter, req *http.Request) {
-		if req.Method != http.MethodGet {
-			http.Error(rw, fmt.Sprintf("unsupported method %s", req.Method), http.StatusBadRequest)
-			return
-		}
-
-		open, err := os.Open(filepath.Join("fixtures", filename))
-		if err != nil {
-			http.Error(rw, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		defer func() { _ = open.Close() }()
-
-		rw.WriteHeader(http.StatusOK)
-		_, err = io.Copy(rw, open)
-		if err != nil {
-			http.Error(rw, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	})
-
-	client, err := NewClient(server.URL, "user", "secret")
-	require.NoError(t, err)
-
-	client.HTTPClient = server.Client()
-
-	return client
+			return client, nil
+		},
+		servermock.CheckHeader().WithJSONHeaders().
+			WithAuthorization("cpanel user:secret"))
 }
 
 func TestClient_FetchZoneInformation(t *testing.T) {
-	client := setupTest(t, "/execute/DNS/parse_zone", "zone-info.json")
+	client := mockBuilder().
+		Route("GET /execute/DNS/parse_zone",
+			servermock.ResponseFromFixture("zone-info.json"),
+			servermock.CheckQueryParameter().Strict().
+				With("zone", "example.com")).
+		Build(t)
 
-	zoneInfo, err := client.FetchZoneInformation(context.Background(), "example.com")
+	zoneInfo, err := client.FetchZoneInformation(t.Context(), "example.com")
 	require.NoError(t, err)
 
 	expected := []shared.ZoneRecord{{
@@ -71,16 +50,27 @@ func TestClient_FetchZoneInformation(t *testing.T) {
 }
 
 func TestClient_FetchZoneInformation_error(t *testing.T) {
-	client := setupTest(t, "/execute/DNS/parse_zone", "zone-info_error.json")
+	client := mockBuilder().
+		Route("GET /execute/DNS/parse_zone",
+			servermock.ResponseFromFixture("zone-info_error.json")).
+		Build(t)
 
-	zoneInfo, err := client.FetchZoneInformation(context.Background(), "example.com")
-	require.Error(t, err)
+	zoneInfo, err := client.FetchZoneInformation(t.Context(), "example.com")
+	require.EqualError(t, err, "error(0): You do not control a DNS zone named example.com.: a, b, c")
 
 	assert.Nil(t, zoneInfo)
 }
 
 func TestClient_AddRecord(t *testing.T) {
-	client := setupTest(t, "/execute/DNS/mass_edit_zone", "update-zone.json")
+	client := mockBuilder().
+		Route("GET /execute/DNS/mass_edit_zone",
+			servermock.ResponseFromFixture("update-zone.json"),
+			servermock.CheckQueryParameter().Strict().
+				With("zone", "example.com").
+				With("add", `{"dname":"example","ttl":14400,"record_type":"TXT","data":["string1","string2"]}`).
+				With("serial", "123456").
+				With("zone", "example.com")).
+		Build(t)
 
 	record := shared.Record{
 		DName:      "example",
@@ -89,7 +79,7 @@ func TestClient_AddRecord(t *testing.T) {
 		Data:       []string{"string1", "string2"},
 	}
 
-	zoneSerial, err := client.AddRecord(context.Background(), 123456, "example.com", record)
+	zoneSerial, err := client.AddRecord(t.Context(), 123456, "example.com", record)
 	require.NoError(t, err)
 
 	expected := &shared.ZoneSerial{NewSerial: "2021031903"}
@@ -98,7 +88,10 @@ func TestClient_AddRecord(t *testing.T) {
 }
 
 func TestClient_AddRecord_error(t *testing.T) {
-	client := setupTest(t, "/execute/DNS/mass_edit_zone", "update-zone_error.json")
+	client := mockBuilder().
+		Route("GET /execute/DNS/mass_edit_zone",
+			servermock.ResponseFromFixture("update-zone_error.json")).
+		Build(t)
 
 	record := shared.Record{
 		DName:      "example",
@@ -107,14 +100,21 @@ func TestClient_AddRecord_error(t *testing.T) {
 		Data:       []string{"string1", "string2"},
 	}
 
-	zoneSerial, err := client.AddRecord(context.Background(), 123456, "example.com", record)
+	zoneSerial, err := client.AddRecord(t.Context(), 123456, "example.com", record)
 	require.Error(t, err)
 
 	assert.Nil(t, zoneSerial)
 }
 
 func TestClient_EditRecord(t *testing.T) {
-	client := setupTest(t, "/execute/DNS/mass_edit_zone", "update-zone.json")
+	client := mockBuilder().
+		Route("GET /execute/DNS/mass_edit_zone",
+			servermock.ResponseFromFixture("update-zone.json"),
+			servermock.CheckQueryParameter().Strict().
+				With("edit", `{"dname":"example","ttl":14400,"record_type":"TXT","data":["string1","string2"],"line_index":9}`).
+				With("serial", "123456").
+				With("zone", "example.com")).
+		Build(t)
 
 	record := shared.Record{
 		LineIndex:  9,
@@ -124,7 +124,7 @@ func TestClient_EditRecord(t *testing.T) {
 		Data:       []string{"string1", "string2"},
 	}
 
-	zoneSerial, err := client.EditRecord(context.Background(), 123456, "example.com", record)
+	zoneSerial, err := client.EditRecord(t.Context(), 123456, "example.com", record)
 	require.NoError(t, err)
 
 	expected := &shared.ZoneSerial{NewSerial: "2021031903"}
@@ -133,7 +133,10 @@ func TestClient_EditRecord(t *testing.T) {
 }
 
 func TestClient_EditRecord_error(t *testing.T) {
-	client := setupTest(t, "/execute/DNS/mass_edit_zone", "update-zone_error.json")
+	client := mockBuilder().
+		Route("GET /execute/DNS/mass_edit_zone",
+			servermock.ResponseFromFixture("update-zone_error.json")).
+		Build(t)
 
 	record := shared.Record{
 		LineIndex:  9,
@@ -143,16 +146,23 @@ func TestClient_EditRecord_error(t *testing.T) {
 		Data:       []string{"string1", "string2"},
 	}
 
-	zoneSerial, err := client.EditRecord(context.Background(), 123456, "example.com", record)
+	zoneSerial, err := client.EditRecord(t.Context(), 123456, "example.com", record)
 	require.Error(t, err)
 
 	assert.Nil(t, zoneSerial)
 }
 
 func TestClient_DeleteRecord(t *testing.T) {
-	client := setupTest(t, "/execute/DNS/mass_edit_zone", "update-zone.json")
+	client := mockBuilder().
+		Route("GET /execute/DNS/mass_edit_zone",
+			servermock.ResponseFromFixture("update-zone.json"),
+			servermock.CheckQueryParameter().Strict().
+				With("remove", "0").
+				With("serial", "123456").
+				With("zone", "example.com")).
+		Build(t)
 
-	zoneSerial, err := client.DeleteRecord(context.Background(), 123456, "example.com", 0)
+	zoneSerial, err := client.DeleteRecord(t.Context(), 123456, "example.com", 0)
 	require.NoError(t, err)
 
 	expected := &shared.ZoneSerial{NewSerial: "2021031903"}
@@ -161,9 +171,12 @@ func TestClient_DeleteRecord(t *testing.T) {
 }
 
 func TestClient_DeleteRecord_error(t *testing.T) {
-	client := setupTest(t, "/execute/DNS/mass_edit_zone", "update-zone_error.json")
+	client := mockBuilder().
+		Route("GET /execute/DNS/mass_edit_zone",
+			servermock.ResponseFromFixture("update-zone_error.json")).
+		Build(t)
 
-	zoneSerial, err := client.DeleteRecord(context.Background(), 123456, "example.com", 0)
+	zoneSerial, err := client.DeleteRecord(t.Context(), 123456, "example.com", 0)
 	require.Error(t, err)
 
 	assert.Nil(t, zoneSerial)

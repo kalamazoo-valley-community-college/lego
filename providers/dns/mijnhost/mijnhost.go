@@ -12,7 +12,6 @@ import (
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/platform/config/env"
 	"github.com/go-acme/lego/v4/providers/dns/mijnhost/internal"
-	"github.com/miekg/dns"
 )
 
 // Environment variables names.
@@ -27,6 +26,8 @@ const (
 	EnvSequenceInterval   = envNamespace + "SEQUENCE_INTERVAL"
 	EnvHTTPTimeout        = envNamespace + "HTTP_TIMEOUT"
 )
+
+const txtType = "TXT"
 
 var _ challenge.ProviderTimeout = (*DNSProvider)(nil)
 
@@ -128,7 +129,7 @@ func (d *DNSProvider) Present(domain, token, keyAuth string) error {
 	}
 
 	record := internal.Record{
-		Type:  "TXT",
+		Type:  txtType,
 		Name:  subDomain,
 		Value: info.Value,
 		TTL:   d.config.TTL,
@@ -137,7 +138,7 @@ func (d *DNSProvider) Present(domain, token, keyAuth string) error {
 	// mijn.host doesn't support multiple values for a domain,
 	// so we removed existing record for the subdomain.
 	cleanedRecords := filterRecords(records, func(record internal.Record) bool {
-		return record.Name == subDomain || record.Name == dns01.UnFqdn(info.EffectiveFQDN)
+		return record.Type == txtType && (record.Name == subDomain || record.Name == dns01.UnFqdn(info.EffectiveFQDN))
 	})
 
 	cleanedRecords = append(cleanedRecords, record)
@@ -170,7 +171,7 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 	}
 
 	cleanedRecords := filterRecords(records, func(record internal.Record) bool {
-		return record.Value == info.Value
+		return record.Type == txtType && record.Value == info.Value
 	})
 
 	err = d.client.UpdateRecords(context.Background(), dom.Domain, cleanedRecords)
@@ -182,11 +183,7 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 }
 
 func findDomain(domains []internal.Domain, fqdn string) (internal.Domain, error) {
-	labelIndexes := dns.Split(fqdn)
-
-	for _, index := range labelIndexes {
-		domain := dns01.UnFqdn(fqdn[index:])
-
+	for domain := range dns01.UnFqdnDomainsSeq(fqdn) {
 		for _, dom := range domains {
 			if dom.Domain == domain {
 				return dom, nil
