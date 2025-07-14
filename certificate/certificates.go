@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -395,10 +396,23 @@ func (c *Certifier) sendResultToControlPlane(certRes *Resource) {
 		return
 	}
 
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Fatalf("Failed to determine hostname. This should never happen.")
+		return
+	}
+
 	durationDays := int(cert.NotAfter.Sub(cert.NotBefore).Hours() / 24)
 
+	// Why are we using hostname as the CN?  This reporting logic is only used for external trust roots such as LE.
+	// When we are using external trust roots, we sometimes request the same cn on multiple redundant machines
+	// for example, cloud-proxy-1 and cloud-proxy-2 both request the wildcard cert.  In these situations it is more
+	// useful for the cn column (at the time of writing, "Host") to reflect the machine name so that the two machines'
+	// records stay separate.  If we used the real CN like the smallstep reporting logic does, both machines would
+	// collapse into the same ca-helper record.
+
 	data := map[string]interface{}{
-		"cn":        cert.Subject.CommonName,
+		"cn":        hostname,
 		"sans":      cert.DNSNames,
 		"certUrl":   certRes.CertURL,
 		"not_after": cert.NotAfter.Format(time.RFC3339),
