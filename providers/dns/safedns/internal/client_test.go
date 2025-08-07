@@ -17,6 +17,7 @@ func mockBuilder() *servermock.Builder[*Client] {
 		func(server *httptest.Server) (*Client, error) {
 			client := NewClient("secret")
 			client.baseURL, _ = url.Parse(server.URL)
+			client.HTTPClient = server.Client()
 
 			return client, nil
 		},
@@ -29,7 +30,7 @@ func TestClient_AddRecord(t *testing.T) {
 		Route("POST /zones/example.com/records",
 			servermock.ResponseFromFixture("add_record.json").
 				WithStatusCode(http.StatusCreated),
-			servermock.CheckRequestJSONBodyFromFile("add_record-request.json")).
+			servermock.CheckRequestJSONBodyFromFixture("add_record-request.json")).
 		Build(t)
 
 	record := Record{

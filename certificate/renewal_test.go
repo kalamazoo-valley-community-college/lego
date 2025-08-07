@@ -11,6 +11,7 @@ import (
 	"github.com/go-acme/lego/v4/acme/api"
 	"github.com/go-acme/lego/v4/certcrypto"
 	"github.com/go-acme/lego/v4/platform/tester"
+	"github.com/go-acme/lego/v4/platform/tester/servermock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -42,31 +43,24 @@ func TestCertifier_GetRenewalInfo(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test with a fake API.
-	mux, apiURL := tester.SetupFakeAPI(t)
-	mux.HandleFunc("/renewalInfo/"+ariLeafCertID, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Retry-After", "21600")
-		w.WriteHeader(http.StatusOK)
-		_, wErr := w.Write([]byte(`{
+	server := tester.MockACMEServer().
+		Route("GET /renewalInfo/"+ariLeafCertID,
+			servermock.RawStringResponse(`{
 				"suggestedWindow": {
 					"start": "2020-03-17T17:51:09Z",
 					"end": "2020-03-17T18:21:09Z"
 				},
-				"explanationUrl": "https://aricapable.ca/docs/renewal-advice/"
+				"explanationUrl": "https://aricapable.ca.example/docs/renewal-advice/"
 			}
-		}`))
-		require.NoError(t, wErr)
-	})
+		}`).
+				WithHeader("Content-Type", "application/json").
+				WithHeader("Retry-After", "21600")).
+		BuildHTTPS(t)
 
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err, "Could not generate test key")
 
-	core, err := api.New(http.DefaultClient, "lego-test", apiURL+"/dir", "", key)
+	core, err := api.New(server.Client(), "lego-test", server.URL+"/dir", "", key)
 	require.NoError(t, err)
 
 	certifier := NewCertifier(core, &resolverMock{}, CertifierOptions{KeyType: certcrypto.RSA2048})
@@ -76,7 +70,7 @@ func TestCertifier_GetRenewalInfo(t *testing.T) {
 	require.NotNil(t, ri)
 	assert.Equal(t, "2020-03-17T17:51:09Z", ri.SuggestedWindow.Start.Format(time.RFC3339))
 	assert.Equal(t, "2020-03-17T18:21:09Z", ri.SuggestedWindow.End.Format(time.RFC3339))
-	assert.Equal(t, "https://aricapable.ca/docs/renewal-advice/", ri.ExplanationURL)
+	assert.Equal(t, "https://aricapable.ca.example/docs/renewal-advice/", ri.ExplanationURL)
 	assert.Equal(t, time.Duration(21600000000000), ri.RetryAfter)
 }
 
@@ -88,24 +82,23 @@ func TestCertifier_GetRenewalInfo_errors(t *testing.T) {
 	require.NoError(t, err, "Could not generate test key")
 
 	testCases := []struct {
-		desc       string
-		httpClient *http.Client
-		request    RenewalInfoRequest
-		handler    http.HandlerFunc
+		desc    string
+		timeout time.Duration
+		request RenewalInfoRequest
+		handler http.HandlerFunc
 	}{
 		{
-			desc:       "API timeout",
-			httpClient: &http.Client{Timeout: 500 * time.Millisecond}, // HTTP client that times out after 500ms.
-			request:    RenewalInfoRequest{leaf},
+			desc:    "API timeout",
+			timeout: 500 * time.Millisecond, // HTTP client that times out after 500ms.
+			request: RenewalInfoRequest{leaf},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				// API that takes 2ms to respond.
 				time.Sleep(2 * time.Millisecond)
 			},
 		},
 		{
-			desc:       "API error",
-			httpClient: http.DefaultClient,
-			request:    RenewalInfoRequest{leaf},
+			desc:    "API error",
+			request: RenewalInfoRequest{leaf},
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				// API that responds with error instead of renewal info.
 				http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
@@ -117,10 +110,17 @@ func TestCertifier_GetRenewalInfo_errors(t *testing.T) {
 		t.Run(test.desc, func(t *testing.T) {
 			t.Parallel()
 
-			mux, apiURL := tester.SetupFakeAPI(t)
-			mux.HandleFunc("/renewalInfo/"+ariLeafCertID, test.handler)
+			server := tester.MockACMEServer().
+				Route("GET /renewalInfo/"+ariLeafCertID, test.handler).
+				BuildHTTPS(t)
 
-			core, err := api.New(test.httpClient, "lego-test", apiURL+"/dir", "", key)
+			client := server.Client()
+
+			if test.timeout != 0 {
+				client.Timeout = test.timeout
+			}
+
+			core, err := api.New(client, "lego-test", server.URL+"/dir", "", key)
 			require.NoError(t, err)
 
 			certifier := NewCertifier(core, &resolverMock{}, CertifierOptions{KeyType: certcrypto.RSA2048})

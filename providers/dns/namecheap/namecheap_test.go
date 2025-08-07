@@ -1,11 +1,8 @@
 package namecheap
 
 import (
-	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/go-acme/lego/v4/platform/tester/servermock"
 	"github.com/stretchr/testify/assert"
@@ -54,7 +51,7 @@ func TestDNSProvider_Present(t *testing.T) {
 
 			provider := mockBuilder().
 				Route("GET /",
-					servermock.ResponseFromFile(filepath.Join("internal", "fixtures", test.getHostsResponse)),
+					servermock.ResponseFromInternal(test.getHostsResponse),
 					servermock.CheckForm().Strict().
 						With("ClientIp", "10.0.0.1").
 						With("Command", "namecheap.domains.dns.getHosts").
@@ -65,7 +62,7 @@ func TestDNSProvider_Present(t *testing.T) {
 						With("ApiUser", "foo"),
 				).
 				Route("POST /",
-					servermock.ResponseFromFile(filepath.Join("internal", "fixtures", test.setHostsResponse)),
+					servermock.ResponseFromInternal(test.setHostsResponse),
 					servermock.CheckForm().
 						With("ClientIp", "10.0.0.1").
 						With("Command", "namecheap.domains.dns.setHosts").
@@ -94,7 +91,7 @@ func TestDNSProvider_CleanUp(t *testing.T) {
 
 			provider := mockBuilder().
 				Route("GET /",
-					servermock.ResponseFromFile(filepath.Join("internal", "fixtures", test.getHostsResponse)),
+					servermock.ResponseFromInternal(test.getHostsResponse),
 					servermock.CheckForm().Strict().
 						With("ClientIp", "10.0.0.1").
 						With("Command", "namecheap.domains.dns.getHosts").
@@ -105,7 +102,7 @@ func TestDNSProvider_CleanUp(t *testing.T) {
 						With("ApiUser", "foo"),
 				).
 				Route("POST /",
-					servermock.ResponseFromFile(filepath.Join("internal", "fixtures", test.setHostsResponse)),
+					servermock.ResponseFromInternal(test.setHostsResponse),
 					servermock.CheckForm().
 						With("ClientIp", "10.0.0.1").
 						With("Command", "namecheap.domains.dns.setHosts").
@@ -180,11 +177,11 @@ func Test_newPseudoRecord_domainSplit(t *testing.T) {
 func mockBuilder() *servermock.Builder[*DNSProvider] {
 	return servermock.NewBuilder(func(server *httptest.Server) (*DNSProvider, error) {
 		config := NewDefaultConfig()
+		config.HTTPClient = server.Client()
 		config.BaseURL = server.URL
 		config.APIUser = envTestUser
 		config.APIKey = envTestKey
 		config.ClientIP = envTestClientIP
-		config.HTTPClient = &http.Client{Timeout: 60 * time.Second}
 
 		return NewDNSProviderConfig(config)
 	})

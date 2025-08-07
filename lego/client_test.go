@@ -13,7 +13,7 @@ import (
 )
 
 func TestNewClient(t *testing.T) {
-	_, apiURL := tester.SetupFakeAPI(t)
+	server := tester.MockACMEServer().BuildHTTPS(t)
 
 	key, err := rsa.GenerateKey(rand.Reader, 1024)
 	require.NoError(t, err, "Could not generate test key")
@@ -25,7 +25,8 @@ func TestNewClient(t *testing.T) {
 	}
 
 	config := NewConfig(user)
-	config.CADirURL = apiURL + "/dir"
+	config.CADirURL = server.URL + "/dir"
+	config.HTTPClient = server.Client()
 
 	client, err := NewClient(config)
 	require.NoError(t, err, "Could not create client")
