@@ -25,6 +25,7 @@ func allDNSCodes() string {
 		"azure",
 		"azuredns",
 		"baiducloud",
+		"binarylane",
 		"bindman",
 		"bluecat",
 		"bookmyname",
@@ -447,6 +448,26 @@ func displayDNSHelp(w io.Writer, name string) error {
 
 		ew.writeln()
 		ew.writeln(`More information: https://go-acme.github.io/lego/dns/baiducloud`)
+
+	case "binarylane":
+		// generated from: providers/dns/binarylane/binarylane.toml
+		ew.writeln(`Configuration for Binary Lane.`)
+		ew.writeln(`Code:	'binarylane'`)
+		ew.writeln(`Since:	'v4.26.0'`)
+		ew.writeln()
+
+		ew.writeln(`Credentials:`)
+		ew.writeln(`	- "BINARYLANE_API_TOKEN":	API token`)
+		ew.writeln()
+
+		ew.writeln(`Additional Configuration:`)
+		ew.writeln(`	- "BINARYLANE_HTTP_TIMEOUT":	API request timeout in seconds (Default: 30)`)
+		ew.writeln(`	- "BINARYLANE_POLLING_INTERVAL":	Time between DNS propagation check in seconds (Default: 2)`)
+		ew.writeln(`	- "BINARYLANE_PROPAGATION_TIMEOUT":	Maximum waiting time for DNS propagation in seconds (Default: 60)`)
+		ew.writeln(`	- "BINARYLANE_TTL":	The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)`)
+
+		ew.writeln()
+		ew.writeln(`More information: https://go-acme.github.io/lego/dns/binarylane`)
 
 	case "bindman":
 		// generated from: providers/dns/bindman/bindman.toml
@@ -1671,7 +1692,7 @@ func displayDNSHelp(w io.Writer, name string) error {
 
 		ew.writeln(`Credentials:`)
 		ew.writeln(`	- "SOFTLAYER_API_KEY":	Classic Infrastructure API key`)
-		ew.writeln(`	- "SOFTLAYER_USERNAME":	Username (IBM Cloud is <accountID>_<emailAddress>)`)
+		ew.writeln(`	- "SOFTLAYER_USERNAME":	Username (IBM Cloud is {accountID}_{emailAddress})`)
 		ew.writeln()
 
 		ew.writeln(`Additional Configuration:`)
@@ -2497,12 +2518,12 @@ func displayDNSHelp(w io.Writer, name string) error {
 
 		ew.writeln(`Credentials:`)
 		ew.writeln(`	- "OCI_COMPARTMENT_OCID":	Compartment OCID`)
-		ew.writeln(`	- "OCI_PRIVKEY_FILE":	Private key file (ignored if OCI_AUTH_TYPE=instance_principal)`)
-		ew.writeln(`	- "OCI_PRIVKEY_PASS":	Private key password (ignored if OCI_AUTH_TYPE=instance_principal)`)
-		ew.writeln(`	- "OCI_PUBKEY_FINGERPRINT":	Public key fingerprint (ignored if OCI_AUTH_TYPE=instance_principal)`)
-		ew.writeln(`	- "OCI_REGION":	Region (can be empty if OCI_AUTH_TYPE=instance_principal)`)
-		ew.writeln(`	- "OCI_TENANCY_OCID":	Tenancy OCID (ignored if OCI_AUTH_TYPE=instance_principal)`)
-		ew.writeln(`	- "OCI_USER_OCID":	User OCID (ignored if OCI_AUTH_TYPE=instance_principal)`)
+		ew.writeln(`	- "OCI_FINGERPRINT":	Public key fingerprint (ignored if 'OCI_AUTH_TYPE=instance_principal')`)
+		ew.writeln(`	- "OCI_PRIVATE_KEY_PASSWORD":	Private key password (ignored if 'OCI_AUTH_TYPE=instance_principal')`)
+		ew.writeln(`	- "OCI_PRIVATE_KEY_PATH":	Private key file (ignored if 'OCI_AUTH_TYPE=instance_principal')`)
+		ew.writeln(`	- "OCI_REGION":	Region (it can be empty if 'OCI_AUTH_TYPE=instance_principal').`)
+		ew.writeln(`	- "OCI_TENANCY_OCID":	Tenancy OCID (ignored if 'OCI_AUTH_TYPE=instance_principal')`)
+		ew.writeln(`	- "OCI_USER_OCID":	User OCID (ignored if 'OCI_AUTH_TYPE=instance_principal')`)
 		ew.writeln()
 
 		ew.writeln(`Additional Configuration:`)
@@ -2511,6 +2532,11 @@ func displayDNSHelp(w io.Writer, name string) error {
 		ew.writeln(`	- "OCI_POLLING_INTERVAL":	Time between DNS propagation check in seconds (Default: 2)`)
 		ew.writeln(`	- "OCI_PROPAGATION_TIMEOUT":	Maximum waiting time for DNS propagation in seconds (Default: 60)`)
 		ew.writeln(`	- "OCI_TTL":	The TTL of the TXT record used for the DNS challenge in seconds (Default: 120)`)
+		ew.writeln(`	- "TF_VAR_fingerprint":	Alias on 'OCI_FINGERPRINT'`)
+		ew.writeln(`	- "TF_VAR_private_key_path":	Alias on 'OCI_PRIVATE_KEY_PATH'`)
+		ew.writeln(`	- "TF_VAR_region":	Alias on 'OCI_REGION'`)
+		ew.writeln(`	- "TF_VAR_tenancy_ocid":	Alias on 'OCI_TENANCY_OCID'`)
+		ew.writeln(`	- "TF_VAR_user_ocid":	Alias on 'OCI_USER_OCID'`)
 
 		ew.writeln()
 		ew.writeln(`More information: https://go-acme.github.io/lego/dns/oraclecloud`)
@@ -2909,11 +2935,14 @@ func displayDNSHelp(w io.Writer, name string) error {
 		ew.writeln()
 
 		ew.writeln(`Additional Configuration:`)
+		ew.writeln(`	- "SELECTELV2_AUTH_REGION":	Location for auth endpoint like ResellAPI or Keystone (default: 'ru-1')`)
+		ew.writeln(`	- "SELECTELV2_AUTH_URL":	Identity endpoint (defaul: 'https://cloud.api.selcloud.ru/identity/v3/')`)
 		ew.writeln(`	- "SELECTELV2_BASE_URL":	API endpoint URL`)
 		ew.writeln(`	- "SELECTELV2_HTTP_TIMEOUT":	API request timeout in seconds (Default: 30)`)
 		ew.writeln(`	- "SELECTELV2_POLLING_INTERVAL":	Time between DNS propagation check in seconds (Default: 5)`)
 		ew.writeln(`	- "SELECTELV2_PROPAGATION_TIMEOUT":	Maximum waiting time for DNS propagation in seconds (Default: 120)`)
 		ew.writeln(`	- "SELECTELV2_TTL":	The TTL of the TXT record used for the DNS challenge in seconds (Default: 60)`)
+		ew.writeln(`	- "SELECTELV2_USER_DOMAIN_NAME":	To specify the domain name (account ID) where the user is located. (default: SELECTELV2_ACCOUNT_ID)`)
 
 		ew.writeln()
 		ew.writeln(`More information: https://go-acme.github.io/lego/dns/selectelv2`)
