@@ -3,8 +3,6 @@ name: Go CD
 on:
   push:
     branches: [ kvcc ]
-  pull_request:
-    branches: [ kvcc ]
 
 jobs:
   build-matrix:
@@ -86,3 +84,27 @@ jobs:
         with:
           name: lego-${{ matrix.target }}
           path: dist/lego-${{ matrix.target }}${{ matrix.ext }}
+
+  release:
+    # Only run this job when pushing a tag like v1.2.3
+    #if: startsWith(github.ref, 'refs/tags/')
+    needs: build-matrix
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: List downloaded files (debug)
+        run: ls -R dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.SYSTEMS_PAT }}
