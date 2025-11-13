@@ -87,7 +87,7 @@ jobs:
 
   release:
     # Only run this job for direct pushes to main (not PRs)
-    if: github.ref == 'refs/heads/main'
+    #if: github.ref == 'refs/heads/main'
     needs: build-matrix
     runs-on: ubuntu-latest
 
