@@ -1,0 +1,88 @@
+name: Go CD
+
+on:
+  push:
+    branches: [ kvcc ]
+  pull_request:
+    branches: [ kvcc ]
+
+jobs:
+  build-matrix:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-debian
+            goos: linux
+            goarch: amd64
+            ext: ""
+          - target: linux-rhel
+            goos: linux
+            goarch: amd64
+            ext: ""
+          - target: linux-alpine
+            goos: linux
+            goarch: amd64
+            ext: ""
+          - target: windows
+            goos: windows
+            goarch: amd64
+            ext: ".exe"
+          - target: macos
+            goos: darwin
+            goarch: amd64
+            ext: ""
+
+    env:
+      GO111MODULE: "on"
+      CGO_ENABLED: 0            # static-ish builds that are friendlier to Alpine
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"  # adjust if needed
+
+      - name: Cache Go modules & build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download modules
+        run: go mod download
+
+      # If you prefer to keep using make, you can comment out the "go build" step
+      # below and instead use `make build` with GOOS/GOARCH envs.
+      - name: Build binary for ${{ matrix.target }}
+        run: |
+          mkdir -p dist
+          # Adjust ./cmd/lego if your main package path is different
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
+            go build -v -o dist/lego-${{ matrix.target }}${{ matrix.ext }} ./cmd/lego
+
+      - name: Install libcap for Linux targets
+        if: matrix.goos == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcap2-bin
+
+      - name: Allow binding to privileged ports (Linux targets)
+        if: matrix.goos == 'linux'
+        run: |
+          sudo setcap 'cap_net_bind_service=+ep' dist/lego-${{ matrix.target }}
+
+      - name: Upload artifact for ${{ matrix.target }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: lego-${{ matrix.target }}
+          path: dist/lego-${{ matrix.target }}${{ matrix.ext }}
