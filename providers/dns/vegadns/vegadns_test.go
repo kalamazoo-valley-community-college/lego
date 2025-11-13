@@ -19,6 +19,7 @@ var envTest = tester.NewEnvTest(EnvKey, EnvSecret, EnvURL)
 
 func TestNewDNSProvider_Fail(t *testing.T) {
 	defer envTest.RestoreEnv()
+
 	envTest.ClearEnv()
 
 	_, err := NewDNSProvider()
@@ -27,6 +28,7 @@ func TestNewDNSProvider_Fail(t *testing.T) {
 
 func TestDNSProvider_TimeoutSuccess(t *testing.T) {
 	defer envTest.RestoreEnv()
+
 	envTest.ClearEnv()
 
 	provider := mockBuilder().Build(t)
@@ -44,7 +46,7 @@ func TestDNSProvider_Present(t *testing.T) {
 		expectedError string
 	}{
 		{
-			desc: "Success",
+			desc: "success",
 			builder: mockBuilder().
 				Route("POST /1.0/token",
 					servermock.ResponseFromFixture("token.json")).
@@ -54,17 +56,17 @@ func TestDNSProvider_Present(t *testing.T) {
 						WithStatusCode(http.StatusCreated)),
 		},
 		{
-			desc: "FailToFindZone",
+			desc: "fail to find the zone",
 			builder: mockBuilder().
 				Route("POST /1.0/token",
 					servermock.ResponseFromFixture("token.json")).
 				Route("GET /1.0/domains",
 					servermock.Noop().
 						WithStatusCode(http.StatusNotFound)),
-			expectedError: "vegadns: can't find Authoritative Zone for _acme-challenge.example.com. in Present: Unable to find auth zone for fqdn _acme-challenge.example.com",
+			expectedError: "vegadns: find domain ID for _acme-challenge.example.com.: domain not found",
 		},
 		{
-			desc: "FailToCreateTXT",
+			desc: "fail to create TXT record",
 			builder: mockBuilder().
 				Route("POST /1.0/token",
 					servermock.ResponseFromFixture("token.json")).
@@ -72,13 +74,14 @@ func TestDNSProvider_Present(t *testing.T) {
 				Route("POST /1.0/records",
 					servermock.Noop().
 						WithStatusCode(http.StatusBadRequest)),
-			expectedError: "vegadns: Got bad answer from VegaDNS on CreateTXT. Code: 400. Message: ",
+			expectedError: "vegadns: create TXT record: bad answer from VegaDNS (code: 400, message: )",
 		},
 	}
 
 	for _, test := range testCases {
 		t.Run(test.desc, func(t *testing.T) {
 			defer envTest.RestoreEnv()
+
 			envTest.ClearEnv()
 
 			provider := test.builder.Build(t)
@@ -100,7 +103,7 @@ func TestDNSProvider_CleanUp(t *testing.T) {
 		expectedError string
 	}{
 		{
-			desc: "Success",
+			desc: "success",
 			builder: mockBuilder().
 				Route("POST /1.0/token",
 					servermock.ResponseFromFixture("token.json")).
@@ -112,17 +115,17 @@ func TestDNSProvider_CleanUp(t *testing.T) {
 					servermock.ResponseFromFixture("record_delete.json")),
 		},
 		{
-			desc: "FailToFindZone",
+			desc: "fail to find the zone",
 			builder: mockBuilder().
 				Route("POST /1.0/token",
 					servermock.ResponseFromFixture("token.json")).
 				Route("GET /1.0/domains",
 					servermock.Noop().
 						WithStatusCode(http.StatusNotFound)),
-			expectedError: "vegadns: can't find Authoritative Zone for _acme-challenge.example.com. in CleanUp: Unable to find auth zone for fqdn _acme-challenge.example.com",
+			expectedError: "vegadns: find domain ID for _acme-challenge.example.com.: domain not found",
 		},
 		{
-			desc: "FailToGetRecordID",
+			desc: "fail to get record ID",
 			builder: mockBuilder().
 				Route("POST /1.0/token",
 					servermock.ResponseFromFixture("token.json")).
@@ -131,13 +134,14 @@ func TestDNSProvider_CleanUp(t *testing.T) {
 					servermock.Noop().
 						WithStatusCode(http.StatusNotFound),
 					servermock.CheckQueryParameter().With("domain_id", "1")),
-			expectedError: "vegadns: couldn't get Record ID in CleanUp: Got bad answer from VegaDNS on GetRecordID. Code: 404. Message: ",
+			expectedError: "vegadns: find record ID for 1: get records: bad answer from VegaDNS (code: 404, message: )",
 		},
 	}
 
 	for _, test := range testCases {
 		t.Run(test.desc, func(t *testing.T) {
 			defer envTest.RestoreEnv()
+
 			envTest.ClearEnv()
 
 			provider := test.builder.Build(t)
@@ -167,6 +171,7 @@ func getDomainHandler() http.HandlerFunc {
   ]
 }
 `)
+
 			return
 		}
 

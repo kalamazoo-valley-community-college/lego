@@ -8,12 +8,14 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/cenkalti/backoff/v5"
 	"github.com/go-acme/lego/v4/challenge"
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/log"
 	"github.com/go-acme/lego/v4/platform/config/env"
 	"github.com/go-acme/lego/v4/platform/wait"
 	"github.com/go-acme/lego/v4/providers/dns/cloudns/internal"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 )
 
 // Environment variables names.
@@ -66,6 +68,7 @@ type DNSProvider struct {
 // CLOUDNS_AUTH_ID and CLOUDNS_AUTH_PASSWORD.
 func NewDNSProvider() (*DNSProvider, error) {
 	var subAuthID string
+
 	authID := env.GetOrFile(EnvAuthID)
 	if authID == "" {
 		subAuthID = env.GetOrFile(EnvSubAuthID)
@@ -99,7 +102,11 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 		return nil, fmt.Errorf("ClouDNS: %w", err)
 	}
 
-	client.HTTPClient = config.HTTPClient
+	if config.HTTPClient != nil {
+		client.HTTPClient = config.HTTPClient
+	}
+
+	client.HTTPClient = clientdebug.Wrap(client.HTTPClient)
 
 	return &DNSProvider{client: client, config: config}, nil
 }
@@ -162,14 +169,22 @@ func (d *DNSProvider) Timeout() (timeout, interval time.Duration) {
 // waitNameservers At the time of writing 4 servers are found as authoritative, but 8 are reported during the sync.
 // If this is not done, the secondary verification done by Let's Encrypt server will fail quire a bit.
 func (d *DNSProvider) waitNameservers(ctx context.Context, domain string, zone *internal.Zone) error {
-	return wait.For("Nameserver sync on "+domain, d.config.PropagationTimeout, d.config.PollingInterval, func() (bool, error) {
-		syncProgress, err := d.client.GetUpdateStatus(ctx, zone.Name)
-		if err != nil {
-			return false, err
-		}
+	return wait.Retry(ctx,
+		func() error {
+			syncProgress, err := d.client.GetUpdateStatus(ctx, zone.Name)
+			if err != nil {
+				return fmt.Errorf("nameserver sync on %s: %w", domain, err)
+			}
 
-		log.Infof("[%s] Sync %d/%d complete", domain, syncProgress.Updated, syncProgress.Total)
+			log.Infof("[%s] Sync %d/%d complete", domain, syncProgress.Updated, syncProgress.Total)
 
-		return syncProgress.Complete, nil
-	})
+			if !syncProgress.Complete {
+				return fmt.Errorf("nameserver sync on %s not complete", domain)
+			}
+
+			return nil
+		},
+		backoff.WithBackOff(backoff.NewConstantBackOff(d.config.PollingInterval)),
+		backoff.WithMaxElapsedTime(d.config.PropagationTimeout),
+	)
 }

@@ -1,0 +1,15 @@
+{
+  "overwrite": true,
+  "zone": [
+    {
+      "name": "_acme-challenge",
+      "records": [
+        {
+          "content": "aaa"
+        }
+      ],
+      "ttl": 14400,
+      "type": "TXT"
+    }
+  ]
+}

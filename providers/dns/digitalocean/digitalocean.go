@@ -14,6 +14,7 @@ import (
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/platform/config/env"
 	"github.com/go-acme/lego/v4/providers/dns/digitalocean/internal"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 )
 
 // Environment variables names.
@@ -88,10 +89,15 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 		return nil, errors.New("digitalocean: credentials missing")
 	}
 
-	client := internal.NewClient(internal.OAuthStaticAccessToken(config.HTTPClient, config.AuthToken))
+	client := internal.NewClient(
+		clientdebug.Wrap(
+			internal.OAuthStaticAccessToken(config.HTTPClient, config.AuthToken),
+		),
+	)
 
 	if config.BaseURL != "" {
 		var err error
+
 		client.BaseURL, err = url.Parse(config.BaseURL)
 		if err != nil {
 			return nil, fmt.Errorf("digitalocean: %w", err)
@@ -147,6 +153,7 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 	d.recordIDsMu.Lock()
 	recordID, ok := d.recordIDs[token]
 	d.recordIDsMu.Unlock()
+
 	if !ok {
 		return fmt.Errorf("digitalocean: unknown record ID for '%s'", info.EffectiveFQDN)
 	}

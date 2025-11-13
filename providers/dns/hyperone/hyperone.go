@@ -13,6 +13,7 @@ import (
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/platform/config/env"
 	"github.com/go-acme/lego/v4/providers/dns/hyperone/internal"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 )
 
 // Environment variables names.
@@ -76,6 +77,7 @@ func NewDNSProvider() (*DNSProvider, error) {
 func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 	if config.PassportLocation == "" {
 		var err error
+
 		config.PassportLocation, err = GetDefaultPassportLocation()
 		if err != nil {
 			return nil, fmt.Errorf("hyperone: %w", err)
@@ -95,6 +97,8 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 	if config.HTTPClient != nil {
 		client.HTTPClient = config.HTTPClient
 	}
+
+	client.HTTPClient = clientdebug.Wrap(client.HTTPClient)
 
 	return &DNSProvider{client: client, config: config}, nil
 }
@@ -163,6 +167,7 @@ func (d *DNSProvider) CleanUp(domain, _, keyAuth string) error {
 	if err != nil {
 		return fmt.Errorf("hyperone: %w", err)
 	}
+
 	if len(records) == 1 {
 		if records[0].Content != info.Value {
 			return fmt.Errorf("hyperone: record with content %s not found: fqdn=%s", info.Value, info.EffectiveFQDN)

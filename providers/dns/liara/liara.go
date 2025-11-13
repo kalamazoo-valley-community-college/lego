@@ -13,6 +13,7 @@ import (
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/log"
 	"github.com/go-acme/lego/v4/platform/config/env"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 	"github.com/go-acme/lego/v4/providers/dns/liara/internal"
 	"github.com/hashicorp/go-retryablehttp"
 )
@@ -99,13 +100,19 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 	}
 
 	retryClient := retryablehttp.NewClient()
+
 	retryClient.RetryMax = 5
 	if config.HTTPClient != nil {
 		retryClient.HTTPClient = config.HTTPClient
 	}
+
 	retryClient.Logger = log.Logger
 
-	client := internal.NewClient(internal.OAuthStaticAccessToken(retryClient.StandardClient(), config.APIKey))
+	client := internal.NewClient(
+		clientdebug.Wrap(
+			internal.OAuthStaticAccessToken(retryClient.StandardClient(), config.APIKey),
+		),
+	)
 
 	return &DNSProvider{
 		config:    config,
@@ -140,6 +147,7 @@ func (d *DNSProvider) Present(domain, token, keyAuth string) error {
 		Contents: []internal.Content{{Text: info.Value}},
 		TTL:      d.config.TTL,
 	}
+
 	newRecord, err := d.client.CreateRecord(context.Background(), dns01.UnFqdn(authZone), record)
 	if err != nil {
 		return fmt.Errorf("liara: failed to create TXT record, fqdn=%s: %w", info.EffectiveFQDN, err)
@@ -165,6 +173,7 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 	d.recordIDsMu.Lock()
 	recordID, ok := d.recordIDs[token]
 	d.recordIDsMu.Unlock()
+
 	if !ok {
 		return fmt.Errorf("liara: unknown record ID for '%s' '%s'", info.EffectiveFQDN, token)
 	}

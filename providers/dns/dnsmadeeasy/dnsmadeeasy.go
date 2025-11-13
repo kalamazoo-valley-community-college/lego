@@ -15,6 +15,7 @@ import (
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/platform/config/env"
 	"github.com/go-acme/lego/v4/providers/dns/dnsmadeeasy/internal"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 )
 
 // Environment variables names.
@@ -112,7 +113,12 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 		return nil, fmt.Errorf("dnsmadeeasy: %w", err)
 	}
 
-	client.HTTPClient = config.HTTPClient
+	if config.HTTPClient != nil {
+		client.HTTPClient = config.HTTPClient
+	}
+
+	client.HTTPClient = clientdebug.Wrap(client.HTTPClient)
+
 	client.BaseURL, err = url.Parse(baseURL)
 	if err != nil {
 		return nil, err
@@ -149,6 +155,7 @@ func (d *DNSProvider) Present(domainName, token, keyAuth string) error {
 	if err != nil {
 		return fmt.Errorf("dnsmadeeasy: unable to create record for %s: %w", name, err)
 	}
+
 	return nil
 }
 
@@ -171,6 +178,7 @@ func (d *DNSProvider) CleanUp(domainName, token, keyAuth string) error {
 
 	// find matching records
 	name := strings.Replace(info.EffectiveFQDN, "."+authZone, "", 1)
+
 	records, err := d.client.GetRecords(ctx, domain, name, "TXT")
 	if err != nil {
 		return fmt.Errorf("dnsmadeeasy: unable to get records for domain %s: %w", domain.Name, err)
@@ -178,6 +186,7 @@ func (d *DNSProvider) CleanUp(domainName, token, keyAuth string) error {
 
 	// delete records
 	var lastError error
+
 	for _, record := range *records {
 		err = d.client.DeleteRecord(ctx, record)
 		if err != nil {

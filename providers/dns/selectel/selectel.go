@@ -14,6 +14,7 @@ import (
 	"github.com/go-acme/lego/v4/challenge"
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/platform/config/env"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 	"github.com/go-acme/lego/v4/providers/dns/internal/selectel"
 )
 
@@ -92,11 +93,15 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 	}
 
 	client := selectel.NewClient(config.Token)
+
 	if config.HTTPClient != nil {
 		client.HTTPClient = config.HTTPClient
 	}
 
+	client.HTTPClient = clientdebug.Wrap(client.HTTPClient)
+
 	var err error
+
 	client.BaseURL, err = url.Parse(config.BaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("selectel: %w", err)
@@ -129,6 +134,7 @@ func (d *DNSProvider) Present(domain, token, keyAuth string) error {
 		Name:    info.EffectiveFQDN,
 		Content: info.Value,
 	}
+
 	_, err = d.client.AddRecord(ctx, domainObj.ID, txtRecord)
 	if err != nil {
 		return fmt.Errorf("selectel: %w", err)
@@ -158,6 +164,7 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 
 	// Delete records with specific FQDN
 	var lastErr error
+
 	for _, record := range records {
 		if record.Name == recordName {
 			err = d.client.DeleteRecord(ctx, domainObj.ID, record.ID)

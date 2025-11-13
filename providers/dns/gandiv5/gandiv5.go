@@ -15,6 +15,7 @@ import (
 	"github.com/go-acme/lego/v4/log"
 	"github.com/go-acme/lego/v4/platform/config/env"
 	"github.com/go-acme/lego/v4/providers/dns/gandiv5/internal"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 )
 
 // Environment variables names.
@@ -113,12 +114,15 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 		if err != nil {
 			return nil, fmt.Errorf("gandiv5: %w", err)
 		}
+
 		client.BaseURL = baseURL
 	}
 
 	if config.HTTPClient != nil {
 		client.HTTPClient = config.HTTPClient
 	}
+
+	client.HTTPClient = clientdebug.Wrap(client.HTTPClient)
 
 	return &DNSProvider{
 		config:          config,
@@ -160,6 +164,7 @@ func (d *DNSProvider) Present(domain, token, keyAuth string) error {
 		authZone:  authZone,
 		fieldName: subDomain,
 	}
+
 	return nil
 }
 
@@ -170,6 +175,7 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 	// acquire lock and retrieve authZone
 	d.inProgressMu.Lock()
 	defer d.inProgressMu.Unlock()
+
 	if _, ok := d.inProgressFQDNs[info.EffectiveFQDN]; !ok {
 		// if there is no cleanup information then just return
 		return nil
@@ -184,6 +190,7 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 	if err != nil {
 		return fmt.Errorf("gandiv5: %w", err)
 	}
+
 	return nil
 }
 

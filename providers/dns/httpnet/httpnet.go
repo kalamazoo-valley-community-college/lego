@@ -13,6 +13,7 @@ import (
 	"github.com/go-acme/lego/v4/challenge"
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/platform/config/env"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 	"github.com/go-acme/lego/v4/providers/dns/internal/hostingde"
 )
 
@@ -90,6 +91,12 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 
 	client := hostingde.NewClient(config.APIKey)
 	client.BaseURL, _ = url.Parse(hostingde.DefaultHTTPNetBaseURL)
+
+	if config.HTTPClient != nil {
+		client.HTTPClient = config.HTTPClient
+	}
+
+	client.HTTPClient = clientdebug.Wrap(client.HTTPClient)
 
 	return &DNSProvider{
 		config:    config,
@@ -183,6 +190,7 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 	if err != nil {
 		return fmt.Errorf("httpnet: %w", err)
 	}
+
 	zoneConfig.Name = zoneName
 
 	rec := []hostingde.DNSRecord{{
@@ -205,6 +213,7 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 	if err != nil {
 		return fmt.Errorf("httpnet: %w", err)
 	}
+
 	return nil
 }
 

@@ -10,11 +10,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cenkalti/backoff/v5"
 	"github.com/go-acme/lego/v4/challenge"
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/log"
 	"github.com/go-acme/lego/v4/platform/config/env"
 	"github.com/go-acme/lego/v4/platform/wait"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 	"github.com/go-acme/lego/v4/providers/dns/variomedia/internal"
 )
 
@@ -91,6 +93,8 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 		client.HTTPClient = config.HTTPClient
 	}
 
+	client.HTTPClient = clientdebug.Wrap(client.HTTPClient)
+
 	return &DNSProvider{
 		config:    config,
 		client:    client,
@@ -161,6 +165,7 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 	d.recordIDsMu.Lock()
 	recordID, ok := d.recordIDs[token]
 	d.recordIDsMu.Unlock()
+
 	if !ok {
 		return fmt.Errorf("variomedia: unknown record ID for '%s'", info.EffectiveFQDN)
 	}
@@ -179,14 +184,22 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 }
 
 func (d *DNSProvider) waitJob(ctx context.Context, domain, id string) error {
-	return wait.For("variomedia: apply change on "+domain, d.config.PropagationTimeout, d.config.PollingInterval, func() (bool, error) {
-		result, err := d.client.GetJob(ctx, id)
-		if err != nil {
-			return false, err
-		}
+	return wait.Retry(ctx,
+		func() error {
+			result, err := d.client.GetJob(ctx, id)
+			if err != nil {
+				return fmt.Errorf("apply change on %s: %w", domain, err)
+			}
 
-		log.Infof("variomedia: [%s] %s: %s %s", domain, result.Data.ID, result.Data.Attributes.JobType, result.Data.Attributes.Status)
+			log.Infof("variomedia: [%s] %s: %s %s", domain, result.Data.ID, result.Data.Attributes.JobType, result.Data.Attributes.Status)
 
-		return result.Data.Attributes.Status == "done", nil
-	})
+			if result.Data.Attributes.Status != "done" {
+				return fmt.Errorf("apply change on %s: status: %s", domain, result.Data.Attributes.Status)
+			}
+
+			return nil
+		},
+		backoff.WithBackOff(backoff.NewConstantBackOff(d.config.PollingInterval)),
+		backoff.WithMaxElapsedTime(d.config.PropagationTimeout),
+	)
 }

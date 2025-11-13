@@ -57,6 +57,7 @@ func TestNewDNSProvider(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.desc, func(t *testing.T) {
 			defer envTest.RestoreEnv()
+
 			envTest.ClearEnv()
 
 			envTest.Apply(test.envVars)
@@ -151,7 +152,7 @@ func TestDNSProvider_Cleanup(t *testing.T) {
 		Build(t)
 
 	err := provider.CleanUp("example.com", "", fakeChallengeToken)
-	require.NoError(t, err, "failed to remove TXT record")
+	require.NoError(t, err)
 }
 
 func TestLivePresentAndCleanUp(t *testing.T) {
@@ -160,6 +161,7 @@ func TestLivePresentAndCleanUp(t *testing.T) {
 	}
 
 	envTest.RestoreEnv()
+
 	provider, err := NewDNSProvider()
 	require.NoError(t, err)
 

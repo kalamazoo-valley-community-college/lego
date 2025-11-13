@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/platform/config/env"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 	"github.com/go-acme/lego/v4/providers/dns/keyhelp/internal"
 )
 
@@ -88,6 +89,8 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 		client.HTTPClient = config.HTTPClient
 	}
 
+	client.HTTPClient = clientdebug.Wrap(client.HTTPClient)
+
 	return &DNSProvider{
 		config:    config,
 		client:    client,
@@ -159,6 +162,7 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 	d.domainIDsMu.Lock()
 	domainID, ok := d.domainIDs[token]
 	d.domainIDsMu.Unlock()
+
 	if !ok {
 		return fmt.Errorf("keyhelp: unknown record ID for '%s'", info.EffectiveFQDN)
 	}
@@ -169,6 +173,7 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 	}
 
 	var records []internal.Record
+
 	for _, record := range domainRecords.Records.Other {
 		if record.Type == "TXT" && record.Value == info.Value {
 			continue

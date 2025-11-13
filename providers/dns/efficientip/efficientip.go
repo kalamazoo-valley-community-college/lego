@@ -13,6 +13,7 @@ import (
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/platform/config/env"
 	"github.com/go-acme/lego/v4/providers/dns/efficientip/internal"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 )
 
 // Environment variables names.
@@ -91,12 +92,15 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 	if config.Username == "" {
 		return nil, errors.New("efficientip: missing username")
 	}
+
 	if config.Password == "" {
 		return nil, errors.New("efficientip: missing password")
 	}
+
 	if config.Hostname == "" {
 		return nil, errors.New("efficientip: missing hostname")
 	}
+
 	if config.DNSName == "" {
 		return nil, errors.New("efficientip: missing dnsname")
 	}
@@ -112,6 +116,8 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		}
 	}
+
+	client.HTTPClient = clientdebug.Wrap(client.HTTPClient)
 
 	return &DNSProvider{config: config, client: client}, nil
 }

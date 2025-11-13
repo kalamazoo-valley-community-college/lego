@@ -35,13 +35,16 @@ func createRun() *cli.Command {
 		Before: func(ctx *cli.Context) error {
 			// we require either domains or csr, but not both
 			hasDomains := len(ctx.StringSlice(flgDomains)) > 0
+
 			hasCsr := ctx.String(flgCSR) != ""
 			if hasDomains && hasCsr {
 				log.Fatal("Please specify either --domains/-d or --csr/-c, but not both")
 			}
+
 			if !hasDomains && !hasCsr {
 				log.Fatal("Please specify --domains/-d (or --csr/-c if you already have a CSR)")
 			}
+
 			return nil
 		},
 		Action: run,
@@ -76,7 +79,7 @@ func createRun() *cli.Command {
 			},
 			&cli.StringFlag{
 				Name:  flgProfile,
-				Usage: "If the CA offers multiple certificate profiles (draft-aaron-acme-profiles), choose this one.",
+				Usage: "If the CA offers multiple certificate profiles (draft-ietf-acme-profiles), choose this one.",
 			},
 			&cli.StringFlag{
 				Name:  flgAlwaysDeactivateAuthorizations,
@@ -155,10 +158,12 @@ func handleTOS(ctx *cli.Context, client *lego.Client) bool {
 	}
 
 	reader := bufio.NewReader(os.Stdin)
+
 	log.Printf("Please review the TOS at %s", client.GetToSURL())
 
 	for {
 		fmt.Println("Do you accept the TOS? Y/n")
+
 		text, err := reader.ReadString('\n')
 		if err != nil {
 			log.Fatalf("Could not read from console: %v", err)
@@ -219,6 +224,7 @@ func obtainCertificate(ctx *cli.Context, client *lego.Client) (*certificate.Reso
 
 		if ctx.IsSet(flgPrivateKey) {
 			var err error
+
 			request.PrivateKey, err = loadPrivateKey(ctx.String(flgPrivateKey))
 			if err != nil {
 				return nil, fmt.Errorf("load private key: %w", err)
@@ -247,6 +253,7 @@ func obtainCertificate(ctx *cli.Context, client *lego.Client) (*certificate.Reso
 
 	if ctx.IsSet(flgPrivateKey) {
 		var err error
+
 		request.PrivateKey, err = loadPrivateKey(ctx.String(flgPrivateKey))
 		if err != nil {
 			return nil, fmt.Errorf("load private key: %w", err)

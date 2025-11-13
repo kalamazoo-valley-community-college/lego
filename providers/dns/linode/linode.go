@@ -12,6 +12,7 @@ import (
 	"github.com/go-acme/lego/v4/challenge"
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/platform/config/env"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 	"github.com/go-acme/lego/v4/providers/dns/internal/useragent"
 	"github.com/linode/linodego"
 	"golang.org/x/oauth2"
@@ -102,7 +103,7 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 		},
 	}
 
-	client := linodego.NewClient(oauth2Client)
+	client := linodego.NewClient(clientdebug.Wrap(oauth2Client))
 	client.SetUserAgent(useragent.Get())
 
 	return &DNSProvider{config: config, client: &client}, nil
@@ -130,9 +131,11 @@ func (d *DNSProvider) Timeout() (time.Duration, time.Duration) {
 
 // Present creates a TXT record using the specified parameters.
 func (d *DNSProvider) Present(domain, token, keyAuth string) error {
+	ctx := context.Background()
+
 	info := dns01.GetChallengeInfo(domain, keyAuth)
 
-	zone, err := d.getHostedZoneInfo(info.EffectiveFQDN)
+	zone, err := d.getHostedZoneInfo(ctx, info.EffectiveFQDN)
 	if err != nil {
 		return err
 	}
@@ -144,22 +147,26 @@ func (d *DNSProvider) Present(domain, token, keyAuth string) error {
 		Type:   linodego.RecordTypeTXT,
 	}
 
-	_, err = d.client.CreateDomainRecord(context.Background(), zone.domainID, createOpts)
+	_, err = d.client.CreateDomainRecord(ctx, zone.domainID, createOpts)
+
 	return err
 }
 
 // CleanUp removes the TXT record matching the specified parameters.
 func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
+	ctx := context.Background()
+
 	info := dns01.GetChallengeInfo(domain, keyAuth)
 
-	zone, err := d.getHostedZoneInfo(info.EffectiveFQDN)
+	zone, err := d.getHostedZoneInfo(ctx, info.EffectiveFQDN)
 	if err != nil {
 		return err
 	}
 
 	// Get all TXT records for the specified domain.
 	listOpts := linodego.NewListOptions(0, `{"type":"TXT"}`)
-	resources, err := d.client.ListDomainRecords(context.Background(), zone.domainID, listOpts)
+
+	resources, err := d.client.ListDomainRecords(ctx, zone.domainID, listOpts)
 	if err != nil {
 		return err
 	}
@@ -168,7 +175,7 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 	for _, resource := range resources {
 		if (resource.Name == dns01.UnFqdn(info.EffectiveFQDN) || resource.Name == zone.resourceName) &&
 			resource.Target == info.Value {
-			if err := d.client.DeleteDomainRecord(context.Background(), zone.domainID, resource.ID); err != nil {
+			if err := d.client.DeleteDomainRecord(ctx, zone.domainID, resource.ID); err != nil {
 				return err
 			}
 		}
@@ -177,7 +184,7 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 	return nil
 }
 
-func (d *DNSProvider) getHostedZoneInfo(fqdn string) (*hostedZoneInfo, error) {
+func (d *DNSProvider) getHostedZoneInfo(ctx context.Context, fqdn string) (*hostedZoneInfo, error) {
 	// Lookup the zone that handles the specified FQDN.
 	authZone, err := dns01.FindZoneByFqdn(fqdn)
 	if err != nil {
@@ -191,7 +198,8 @@ func (d *DNSProvider) getHostedZoneInfo(fqdn string) (*hostedZoneInfo, error) {
 	}
 
 	listOpts := linodego.NewListOptions(0, string(filter))
-	domains, err := d.client.ListDomains(context.Background(), listOpts)
+
+	domains, err := d.client.ListDomains(ctx, listOpts)
 	if err != nil {
 		return nil, err
 	}

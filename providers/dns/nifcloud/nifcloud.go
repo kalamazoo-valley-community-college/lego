@@ -9,10 +9,12 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/cenkalti/backoff/v5"
 	"github.com/go-acme/lego/v4/challenge"
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/platform/config/env"
 	"github.com/go-acme/lego/v4/platform/wait"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 	"github.com/go-acme/lego/v4/providers/dns/nifcloud/internal"
 )
 
@@ -93,6 +95,8 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 		client.HTTPClient = config.HTTPClient
 	}
 
+	client.HTTPClient = clientdebug.Wrap(client.HTTPClient)
+
 	if config.BaseURL != "" {
 		baseURL, err := url.Parse(config.BaseURL)
 		if err != nil {
@@ -107,23 +111,29 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 
 // Present creates a TXT record using the specified parameters.
 func (d *DNSProvider) Present(domain, token, keyAuth string) error {
+	ctx := context.Background()
+
 	info := dns01.GetChallengeInfo(domain, keyAuth)
 
-	err := d.changeRecord("CREATE", info.EffectiveFQDN, info.Value, d.config.TTL)
+	err := d.changeRecord(ctx, "CREATE", info.EffectiveFQDN, info.Value, d.config.TTL)
 	if err != nil {
 		return fmt.Errorf("nifcloud: %w", err)
 	}
+
 	return err
 }
 
 // CleanUp removes the TXT record matching the specified parameters.
 func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
+	ctx := context.Background()
+
 	info := dns01.GetChallengeInfo(domain, keyAuth)
 
-	err := d.changeRecord("DELETE", info.EffectiveFQDN, info.Value, d.config.TTL)
+	err := d.changeRecord(ctx, "DELETE", info.EffectiveFQDN, info.Value, d.config.TTL)
 	if err != nil {
 		return fmt.Errorf("nifcloud: %w", err)
 	}
+
 	return err
 }
 
@@ -133,7 +143,7 @@ func (d *DNSProvider) Timeout() (timeout, interval time.Duration) {
 	return d.config.PropagationTimeout, d.config.PollingInterval
 }
 
-func (d *DNSProvider) changeRecord(action, fqdn, value string, ttl int) error {
+func (d *DNSProvider) changeRecord(ctx context.Context, action, fqdn, value string, ttl int) error {
 	authZone, err := dns01.FindZoneByFqdn(fqdn)
 	if err != nil {
 		return fmt.Errorf("could not find zone: %w", err)
@@ -170,8 +180,6 @@ func (d *DNSProvider) changeRecord(action, fqdn, value string, ttl int) error {
 		},
 	}
 
-	ctx := context.Background()
-
 	resp, err := d.client.ChangeResourceRecordSets(ctx, dns01.UnFqdn(authZone), reqParams)
 	if err != nil {
 		return fmt.Errorf("failed to change record set: %w", err)
@@ -179,11 +187,20 @@ func (d *DNSProvider) changeRecord(action, fqdn, value string, ttl int) error {
 
 	statusID := resp.ChangeInfo.ID
 
-	return wait.For("nifcloud", 120*time.Second, 4*time.Second, func() (bool, error) {
-		resp, err := d.client.GetChange(ctx, statusID)
-		if err != nil {
-			return false, fmt.Errorf("failed to query change status: %w", err)
-		}
-		return resp.ChangeInfo.Status == "INSYNC", nil
-	})
+	return wait.Retry(ctx,
+		func() error {
+			resp, err := d.client.GetChange(ctx, statusID)
+			if err != nil {
+				return fmt.Errorf("get change: %w", err)
+			}
+
+			if resp.ChangeInfo.Status != "INSYNC" {
+				return fmt.Errorf("change status: %s", resp.ChangeInfo.Status)
+			}
+
+			return nil
+		},
+		backoff.WithBackOff(backoff.NewConstantBackOff(4*time.Second)),
+		backoff.WithMaxElapsedTime(120*time.Second),
+	)
 }

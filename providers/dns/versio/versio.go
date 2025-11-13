@@ -13,6 +13,7 @@ import (
 	"github.com/go-acme/lego/v4/challenge"
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/platform/config/env"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 	"github.com/go-acme/lego/v4/providers/dns/versio/internal"
 )
 
@@ -91,9 +92,11 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 	if config == nil {
 		return nil, errors.New("versio: the configuration of the DNS provider is nil")
 	}
+
 	if config.Username == "" {
 		return nil, errors.New("versio: the versio username is missing")
 	}
+
 	if config.Password == "" {
 		return nil, errors.New("versio: the versio password is missing")
 	}
@@ -107,6 +110,8 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 	if config.HTTPClient != nil {
 		client.HTTPClient = config.HTTPClient
 	}
+
+	client.HTTPClient = clientdebug.Wrap(client.HTTPClient)
 
 	return &DNSProvider{config: config, client: client}, nil
 }
@@ -155,6 +160,7 @@ func (d *DNSProvider) Present(domain, token, keyAuth string) error {
 	if err != nil {
 		return fmt.Errorf("versio: %w", err)
 	}
+
 	return nil
 }
 
@@ -182,6 +188,7 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 
 	// loop through the existing entries and remove the specific record
 	msg := &internal.DomainInfo{}
+
 	for _, e := range domains.DomainInfo.DNSRecords {
 		if e.Name != info.EffectiveFQDN {
 			msg.DNSRecords = append(msg.DNSRecords, e)
@@ -192,5 +199,6 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 	if err != nil {
 		return fmt.Errorf("versio: %w", err)
 	}
+
 	return nil
 }

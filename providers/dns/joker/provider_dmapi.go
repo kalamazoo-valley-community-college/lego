@@ -10,6 +10,7 @@ import (
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/log"
 	"github.com/go-acme/lego/v4/platform/config/env"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 	"github.com/go-acme/lego/v4/providers/dns/joker/internal/dmapi"
 )
 
@@ -27,6 +28,7 @@ func newDmapiProvider() (*dmapiProvider, error) {
 	values, err := env.Get(EnvAPIKey)
 	if err != nil {
 		var errU error
+
 		values, errU = env.Get(EnvUsername, EnvPassword)
 		if errU != nil {
 			//nolint:errorlint // false-positive
@@ -65,6 +67,8 @@ func newDmapiProviderConfig(config *Config) (*dmapiProvider, error) {
 	if config.HTTPClient != nil {
 		client.HTTPClient = config.HTTPClient
 	}
+
+	client.HTTPClient = clientdebug.Wrap(client.HTTPClient)
 
 	return &dmapiProvider{config: config, client: client}, nil
 }
@@ -158,6 +162,7 @@ func (d *dmapiProvider) CleanUp(domain, token, keyAuth string) error {
 	if err != nil {
 		return formatResponseError(response, err)
 	}
+
 	return nil
 }
 
@@ -166,5 +171,6 @@ func formatResponseError(response *dmapi.Response, err error) error {
 	if response != nil {
 		return fmt.Errorf("joker: DMAPI error: %w Response: %v", err, response.Headers)
 	}
+
 	return fmt.Errorf("joker: DMAPI error: %w", err)
 }

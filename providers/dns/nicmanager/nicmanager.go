@@ -12,6 +12,7 @@ import (
 	"github.com/go-acme/lego/v4/challenge"
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/platform/config/env"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 	"github.com/go-acme/lego/v4/providers/dns/nicmanager/internal"
 )
 
@@ -128,6 +129,8 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 		client.HTTPClient = config.HTTPClient
 	}
 
+	client.HTTPClient = clientdebug.Wrap(client.HTTPClient)
+
 	return &DNSProvider{client: client, config: config}, nil
 }
 
@@ -188,8 +191,11 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 
 	name := dns01.UnFqdn(info.EffectiveFQDN)
 
-	var existingRecord internal.Record
-	var existingRecordFound bool
+	var (
+		existingRecord      internal.Record
+		existingRecordFound bool
+	)
+
 	for _, record := range zone.Records {
 		if strings.EqualFold(record.Type, "TXT") && strings.EqualFold(record.Name, name) && record.Content == info.Value {
 			existingRecord = record

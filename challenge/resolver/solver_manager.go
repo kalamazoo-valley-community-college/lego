@@ -1,13 +1,14 @@
 package resolver
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sort"
 	"strconv"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
+	"github.com/cenkalti/backoff/v5"
 	"github.com/go-acme/lego/v4/acme"
 	"github.com/go-acme/lego/v4/acme/api"
 	"github.com/go-acme/lego/v4/challenge"
@@ -15,6 +16,7 @@ import (
 	"github.com/go-acme/lego/v4/challenge/http01"
 	"github.com/go-acme/lego/v4/challenge/tlsalpn01"
 	"github.com/go-acme/lego/v4/log"
+	"github.com/go-acme/lego/v4/platform/wait"
 )
 
 type byType []acme.Challenge
@@ -69,6 +71,7 @@ func (c *SolverManager) chooseSolver(authz acme.Authorization) solver {
 			log.Infof("[%s] acme: use %s solver", domain, chlg.Type)
 			return solvr
 		}
+
 		log.Infof("[%s] acme: Could not find solver for: %s", domain, chlg.Type)
 	}
 
@@ -99,12 +102,14 @@ func validate(core *api.Core, domain string, chlg acme.Challenge) error {
 		// https://github.com/letsencrypt/boulder/blob/master/docs/acme-divergences.md#section-82
 		ra = 5
 	}
+
 	initialInterval := time.Duration(ra) * time.Second
+
+	ctx := context.Background()
 
 	bo := backoff.NewExponentialBackOff()
 	bo.InitialInterval = initialInterval
 	bo.MaxInterval = 10 * initialInterval
-	bo.MaxElapsedTime = 100 * initialInterval
 
 	// After the path is sent, the ACME server will access our server.
 	// Repeatedly check the server for an updated status on our request.
@@ -127,7 +132,9 @@ func validate(core *api.Core, domain string, chlg acme.Challenge) error {
 		return fmt.Errorf("the server didn't respond to our request (status=%s)", authz.Status)
 	}
 
-	return backoff.Retry(operation, bo)
+	return wait.Retry(ctx, operation,
+		backoff.WithBackOff(bo),
+		backoff.WithMaxElapsedTime(100*initialInterval))
 }
 
 func checkChallengeStatus(chlng acme.ExtendedChallenge) (bool, error) {
@@ -157,6 +164,7 @@ func checkAuthorizationStatus(authz acme.Authorization) (bool, error) {
 				return false, fmt.Errorf("invalid authorization: %w", chlg.Err())
 			}
 		}
+
 		return false, errors.New("invalid authorization")
 	default:
 		return false, fmt.Errorf("the server returned an unexpected authorization status: %s", authz.Status)

@@ -11,6 +11,7 @@ import (
 	"github.com/go-acme/lego/v4/challenge"
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/platform/config/env"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 	"github.com/go-acme/lego/v4/providers/dns/rackspace/internal"
 )
 
@@ -98,6 +99,7 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 
 	// Iterate through the Service Catalog to get the DNS Endpoint
 	var dnsEndpoint string
+
 	for _, service := range identity.Access.ServiceCatalog {
 		if service.Name == "cloudDNS" {
 			dnsEndpoint = service.Endpoints[0].PublicURL
@@ -117,6 +119,8 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 	if config.HTTPClient != nil {
 		client.HTTPClient = config.HTTPClient
 	}
+
+	client.HTTPClient = clientdebug.Wrap(client.HTTPClient)
 
 	return &DNSProvider{
 		config:           config,

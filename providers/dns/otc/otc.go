@@ -11,6 +11,7 @@ import (
 	"github.com/go-acme/lego/v4/challenge"
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/platform/config/env"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 	"github.com/go-acme/lego/v4/providers/dns/otc/internal"
 )
 
@@ -23,6 +24,7 @@ const (
 	EnvPassword         = envNamespace + "PASSWORD"
 	EnvProjectName      = envNamespace + "PROJECT_NAME"
 	EnvIdentityEndpoint = envNamespace + "IDENTITY_ENDPOINT"
+	EnvPrivateZone      = envNamespace + "PRIVATE_ZONE"
 
 	EnvTTL                = envNamespace + "TTL"
 	EnvPropagationTimeout = envNamespace + "PROPAGATION_TIMEOUT"
@@ -40,11 +42,13 @@ var _ challenge.ProviderTimeout = (*DNSProvider)(nil)
 
 // Config is used to configure the creation of the DNSProvider.
 type Config struct {
-	IdentityEndpoint   string
-	DomainName         string
-	ProjectName        string
-	UserName           string
-	Password           string
+	DomainName       string
+	ProjectName      string
+	UserName         string
+	Password         string
+	IdentityEndpoint string
+	PrivateZone      bool
+
 	PropagationTimeout time.Duration
 	PollingInterval    time.Duration
 	SequenceInterval   time.Duration
@@ -65,10 +69,12 @@ func NewDefaultConfig() *Config {
 	tr.DisableKeepAlives = true
 
 	return &Config{
+		PrivateZone:      env.GetOrDefaultBool(EnvPrivateZone, false),
+		IdentityEndpoint: env.GetOrDefaultString(EnvIdentityEndpoint, defaultIdentityEndpoint),
+
 		TTL:                env.GetOrDefaultInt(EnvTTL, minTTL),
 		PropagationTimeout: env.GetOrDefaultSecond(EnvPropagationTimeout, dns01.DefaultPropagationTimeout),
 		PollingInterval:    env.GetOrDefaultSecond(EnvPollingInterval, dns01.DefaultPollingInterval),
-		IdentityEndpoint:   env.GetOrDefaultString(EnvIdentityEndpoint, defaultIdentityEndpoint),
 		SequenceInterval:   env.GetOrDefaultSecond(EnvSequenceInterval, dns01.DefaultPropagationTimeout),
 		HTTPClient: &http.Client{
 			Timeout:   env.GetOrDefaultSecond(EnvHTTPTimeout, 10*time.Second),
@@ -125,6 +131,8 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 		client.HTTPClient = config.HTTPClient
 	}
 
+	client.HTTPClient = clientdebug.Wrap(client.HTTPClient)
+
 	return &DNSProvider{config: config, client: client}, nil
 }
 
@@ -144,7 +152,7 @@ func (d *DNSProvider) Present(domain, token, keyAuth string) error {
 		return fmt.Errorf("otc: %w", err)
 	}
 
-	zoneID, err := d.client.GetZoneID(ctx, authZone)
+	zoneID, err := d.client.GetZoneID(ctx, authZone, d.config.PrivateZone)
 	if err != nil {
 		return fmt.Errorf("otc: unable to get zone: %w", err)
 	}
@@ -181,7 +189,7 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 		return fmt.Errorf("otc: %w", err)
 	}
 
-	zoneID, err := d.client.GetZoneID(ctx, authZone)
+	zoneID, err := d.client.GetZoneID(ctx, authZone, d.config.PrivateZone)
 	if err != nil {
 		return fmt.Errorf("otc: %w", err)
 	}

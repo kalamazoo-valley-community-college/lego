@@ -11,6 +11,7 @@ import (
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/log"
 	"github.com/go-acme/lego/v4/platform/config/env"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 	"gopkg.in/ns1/ns1-go.v2/rest"
 	"gopkg.in/ns1/ns1-go.v2/rest/model/dns"
 )
@@ -80,7 +81,12 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 		return nil, errors.New("ns1: credentials missing")
 	}
 
-	client := rest.NewClient(config.HTTPClient, rest.SetAPIKey(config.APIKey))
+	if config.HTTPClient == nil {
+		// Because the rest.NewClient uses the http.DefaultClient.
+		config.HTTPClient = &http.Client{Timeout: 10 * time.Second}
+	}
+
+	client := rest.NewClient(clientdebug.Wrap(config.HTTPClient), rest.SetAPIKey(config.APIKey))
 
 	return &DNSProvider{client: client, config: config}, nil
 }
@@ -141,10 +147,12 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 	}
 
 	name := dns01.UnFqdn(info.EffectiveFQDN)
+
 	_, err = d.client.Records.Delete(zone.Zone, name, "TXT")
 	if err != nil {
 		return fmt.Errorf("ns1: failed to delete record [zone: %q, domain: %q]: %w", zone.Zone, name, err)
 	}
+
 	return nil
 }
 

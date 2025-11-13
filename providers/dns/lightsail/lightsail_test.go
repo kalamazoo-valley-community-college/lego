@@ -34,6 +34,7 @@ var envTest = tester.NewEnvTest(
 
 func TestCredentialsFromEnv(t *testing.T) {
 	defer envTest.RestoreEnv()
+
 	envTest.ClearEnv()
 
 	_ = os.Setenv(envAwsAccessKeyID, "123")
@@ -76,5 +77,5 @@ func TestDNSProvider_Present(t *testing.T) {
 	keyAuth := "123456d=="
 
 	err := provider.Present(domain, "", keyAuth)
-	require.NoError(t, err, "Expected Present to return no error")
+	require.NoError(t, err)
 }

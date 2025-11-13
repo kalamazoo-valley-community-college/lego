@@ -2,10 +2,8 @@ package cmd
 
 import (
 	"crypto"
-	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
-	"errors"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -98,6 +96,7 @@ func (s *AccountsStorage) ExistsAccountFilePath() bool {
 	} else if err != nil {
 		log.Fatal(err)
 	}
+
 	return true
 }
 
@@ -129,6 +128,7 @@ func (s *AccountsStorage) LoadAccount(privateKey crypto.PrivateKey) *Account {
 	}
 
 	var account Account
+
 	err = json.Unmarshal(fileBytes, &account)
 	if err != nil {
 		log.Fatalf("Could not parse file for account %s: %v", s.userID, err)
@@ -143,6 +143,7 @@ func (s *AccountsStorage) LoadAccount(privateKey crypto.PrivateKey) *Account {
 		}
 
 		account.Registration = reg
+
 		err = s.Save(&account)
 		if err != nil {
 			log.Fatalf("Could not save account for %s. Registration is nil: %#v", s.userID, err)
@@ -165,6 +166,7 @@ func (s *AccountsStorage) GetPrivateKey(keyType certcrypto.KeyType) crypto.Priva
 		}
 
 		log.Printf("Saved key to %s", accKeyPath)
+
 		return privateKey
 	}
 
@@ -195,6 +197,7 @@ func generatePrivateKey(file string, keyType certcrypto.KeyType) (crypto.Private
 	defer certOut.Close()
 
 	pemKey := certcrypto.PEMBlock(privateKey)
+
 	err = pem.Encode(certOut, pemKey)
 	if err != nil {
 		return nil, err
@@ -209,16 +212,12 @@ func loadPrivateKey(file string) (crypto.PrivateKey, error) {
 		return nil, err
 	}
 
-	keyBlock, _ := pem.Decode(keyBytes)
-
-	switch keyBlock.Type {
-	case "RSA PRIVATE KEY":
-		return x509.ParsePKCS1PrivateKey(keyBlock.Bytes)
-	case "EC PRIVATE KEY":
-		return x509.ParseECPrivateKey(keyBlock.Bytes)
+	privateKey, err := certcrypto.ParsePEMPrivateKey(keyBytes)
+	if err != nil {
+		return nil, err
 	}
 
-	return nil, errors.New("unknown private key type")
+	return privateKey, nil
 }
 
 func tryRecoverRegistration(ctx *cli.Context, privateKey crypto.PrivateKey) (*registration.Resource, error) {
@@ -236,5 +235,6 @@ func tryRecoverRegistration(ctx *cli.Context, privateKey crypto.PrivateKey) (*re
 	if err != nil {
 		return nil, err
 	}
+
 	return reg, nil
 }

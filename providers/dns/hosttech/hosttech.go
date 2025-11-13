@@ -14,6 +14,7 @@ import (
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/platform/config/env"
 	"github.com/go-acme/lego/v4/providers/dns/hosttech/internal"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 )
 
 // Environment variables names.
@@ -84,7 +85,11 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 		return nil, errors.New("hosttech: missing credentials")
 	}
 
-	client := internal.NewClient(internal.OAuthStaticAccessToken(config.HTTPClient, config.APIKey))
+	client := internal.NewClient(
+		clientdebug.Wrap(
+			internal.OAuthStaticAccessToken(config.HTTPClient, config.APIKey),
+		),
+	)
 
 	return &DNSProvider{
 		config:    config,
@@ -159,6 +164,7 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 	d.recordIDsMu.Lock()
 	recordID, ok := d.recordIDs[token]
 	d.recordIDsMu.Unlock()
+
 	if !ok {
 		return fmt.Errorf("hosttech: unknown record ID for '%s' '%s'", info.EffectiveFQDN, token)
 	}

@@ -12,6 +12,7 @@ import (
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/platform/config/env"
 	"github.com/go-acme/lego/v4/providers/dns/godaddy/internal"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 )
 
 // Environment variables names.
@@ -95,6 +96,8 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 		client.HTTPClient = config.HTTPClient
 	}
 
+	client.HTTPClient = clientdebug.Wrap(client.HTTPClient)
+
 	return &DNSProvider{config: config, client: client}, nil
 }
 
@@ -128,6 +131,7 @@ func (d *DNSProvider) Present(domain, token, keyAuth string) error {
 	}
 
 	var newRecords []internal.DNSRecord
+
 	for _, record := range existingRecords {
 		if record.Data != "" {
 			newRecords = append(newRecords, record)
@@ -174,6 +178,7 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 	}
 
 	var recordsToKeep []internal.DNSRecord
+
 	for _, record := range existingRecords {
 		if record.Data != info.Value && record.Data != "" {
 			recordsToKeep = append(recordsToKeep, record)

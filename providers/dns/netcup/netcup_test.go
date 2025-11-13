@@ -72,6 +72,7 @@ func TestNewDNSProvider(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.desc, func(t *testing.T) {
 			defer envTest.RestoreEnv()
+
 			envTest.ClearEnv()
 
 			envTest.Apply(test.envVars)
@@ -158,13 +159,14 @@ func TestLivePresentAndCleanup(t *testing.T) {
 	}
 
 	envTest.RestoreEnv()
+
 	p, err := NewDNSProvider()
 	require.NoError(t, err)
 
 	info := dns01.GetChallengeInfo(envTest.GetDomain(), "123d==")
 
 	zone, err := dns01.FindZoneByFqdn(info.EffectiveFQDN)
-	require.NoError(t, err, "error finding DNSZone")
+	require.NoError(t, err)
 
 	zone = dns01.UnFqdn(zone)
 
@@ -181,7 +183,7 @@ func TestLivePresentAndCleanup(t *testing.T) {
 			require.NoError(t, err)
 
 			err = p.CleanUp(test, "987d", "123d==")
-			require.NoError(t, err, "Did not clean up! Please remove record yourself.")
+			require.NoError(t, err)
 		})
 	}
 }

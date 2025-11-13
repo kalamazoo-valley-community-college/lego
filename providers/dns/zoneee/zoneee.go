@@ -12,6 +12,7 @@ import (
 	"github.com/go-acme/lego/v4/challenge"
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/platform/config/env"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 	"github.com/go-acme/lego/v4/providers/dns/zoneee/internal"
 )
 
@@ -69,6 +70,7 @@ func NewDNSProvider() (*DNSProvider, error) {
 	}
 
 	rawEndpoint := env.GetOrDefaultString(EnvEndpoint, internal.DefaultEndpoint)
+
 	endpoint, err := url.Parse(rawEndpoint)
 	if err != nil {
 		return nil, fmt.Errorf("zoneee: %w", err)
@@ -105,6 +107,9 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 	if config.HTTPClient != nil {
 		client.HTTPClient = config.HTTPClient
 	}
+
+	client.HTTPClient = clientdebug.Wrap(client.HTTPClient)
+
 	if config.Endpoint != nil {
 		client.BaseURL = config.Endpoint
 	}
@@ -138,6 +143,7 @@ func (d *DNSProvider) Present(domain, token, keyAuth string) error {
 	if err != nil {
 		return fmt.Errorf("zoneee: %w", err)
 	}
+
 	return nil
 }
 
@@ -160,6 +166,7 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 	}
 
 	var id string
+
 	for _, record := range records {
 		if record.Destination == info.Value {
 			id = record.ID

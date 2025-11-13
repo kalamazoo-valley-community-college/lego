@@ -2,14 +2,17 @@
 package vegadns
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
-	vegaClient "github.com/OpenDNS/vegadns2client"
 	"github.com/go-acme/lego/v4/challenge"
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/platform/config/env"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
+	"github.com/nrdcg/vegadns"
 )
 
 // Environment variables names.
@@ -23,18 +26,21 @@ const (
 	EnvTTL                = envNamespace + "TTL"
 	EnvPropagationTimeout = envNamespace + "PROPAGATION_TIMEOUT"
 	EnvPollingInterval    = envNamespace + "POLLING_INTERVAL"
+	EnvHTTPTimeout        = envNamespace + "HTTP_TIMEOUT"
 )
 
 var _ challenge.ProviderTimeout = (*DNSProvider)(nil)
 
 // Config is used to configure the creation of the DNSProvider.
 type Config struct {
-	BaseURL            string
-	APIKey             string
-	APISecret          string
+	BaseURL   string
+	APIKey    string
+	APISecret string
+
 	PropagationTimeout time.Duration
 	PollingInterval    time.Duration
 	TTL                int
+	HTTPClient         *http.Client
 }
 
 // NewDefaultConfig returns a default configuration for the DNSProvider.
@@ -43,13 +49,16 @@ func NewDefaultConfig() *Config {
 		TTL:                env.GetOrDefaultInt(EnvTTL, 10),
 		PropagationTimeout: env.GetOrDefaultSecond(EnvPropagationTimeout, 12*time.Minute),
 		PollingInterval:    env.GetOrDefaultSecond(EnvPollingInterval, time.Minute),
+		HTTPClient: &http.Client{
+			Timeout: env.GetOrDefaultSecond(EnvHTTPTimeout, 30*time.Second),
+		},
 	}
 }
 
 // DNSProvider implements the challenge.Provider interface.
 type DNSProvider struct {
 	config *Config
-	client vegaClient.VegaDNSClient
+	client *vegadns.Client
 }
 
 // NewDNSProvider returns a DNSProvider instance configured for VegaDNS.
@@ -75,11 +84,21 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 		return nil, errors.New("vegadns: the configuration of the DNS provider is nil")
 	}
 
-	vega := vegaClient.NewVegaDNSClient(config.BaseURL)
-	vega.APIKey = config.APIKey
-	vega.APISecret = config.APISecret
+	if config.HTTPClient == nil {
+		config.HTTPClient = &http.Client{Timeout: 30 * time.Second}
+	}
 
-	return &DNSProvider{client: vega, config: config}, nil
+	config.HTTPClient = clientdebug.Wrap(config.HTTPClient)
+
+	client, err := vegadns.NewClient(config.BaseURL,
+		vegadns.WithOAuth(config.APIKey, config.APISecret),
+		vegadns.WithHTTPClient(config.HTTPClient),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("vegadns: %w", err)
+	}
+
+	return &DNSProvider{client: client, config: config}, nil
 }
 
 // Timeout returns the timeout and interval to use when checking for DNS propagation.
@@ -90,39 +109,71 @@ func (d *DNSProvider) Timeout() (timeout, interval time.Duration) {
 
 // Present creates a TXT record to fulfill the dns-01 challenge.
 func (d *DNSProvider) Present(domain, token, keyAuth string) error {
+	ctx := context.Background()
+
 	info := dns01.GetChallengeInfo(domain, keyAuth)
 
-	_, domainID, err := d.client.GetAuthZone(info.EffectiveFQDN)
+	domainID, err := d.findDomainID(ctx, info.EffectiveFQDN)
 	if err != nil {
-		return fmt.Errorf("vegadns: can't find Authoritative Zone for %s in Present: %w", info.EffectiveFQDN, err)
+		return fmt.Errorf("vegadns: find domain ID for %s: %w", info.EffectiveFQDN, err)
 	}
 
-	err = d.client.CreateTXT(domainID, info.EffectiveFQDN, info.Value, d.config.TTL)
+	err = d.client.CreateTXTRecord(ctx, domainID, dns01.UnFqdn(info.EffectiveFQDN), info.Value, d.config.TTL)
 	if err != nil {
-		return fmt.Errorf("vegadns: %w", err)
+		return fmt.Errorf("vegadns: create TXT record: %w", err)
 	}
+
 	return nil
 }
 
 // CleanUp removes the TXT record matching the specified parameters.
 func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
+	ctx := context.Background()
+
 	info := dns01.GetChallengeInfo(domain, keyAuth)
 
-	_, domainID, err := d.client.GetAuthZone(info.EffectiveFQDN)
+	domainID, err := d.findDomainID(ctx, info.EffectiveFQDN)
 	if err != nil {
-		return fmt.Errorf("vegadns: can't find Authoritative Zone for %s in CleanUp: %w", info.EffectiveFQDN, err)
+		return fmt.Errorf("vegadns: find domain ID for %s: %w", info.EffectiveFQDN, err)
 	}
 
-	txt := dns01.UnFqdn(info.EffectiveFQDN)
-
-	recordID, err := d.client.GetRecordID(domainID, txt, "TXT")
+	recordID, err := d.findRecordID(ctx, domainID, dns01.UnFqdn(info.EffectiveFQDN))
 	if err != nil {
-		return fmt.Errorf("vegadns: couldn't get Record ID in CleanUp: %w", err)
+		return fmt.Errorf("vegadns: find record ID for %d: %w", domainID, err)
 	}
 
-	err = d.client.DeleteRecord(recordID)
+	err = d.client.DeleteRecord(ctx, recordID)
 	if err != nil {
-		return fmt.Errorf("vegadns: %w", err)
+		return fmt.Errorf("vegadns: delete record: %w", err)
 	}
+
 	return nil
+}
+
+func (d *DNSProvider) findDomainID(ctx context.Context, fqdn string) (int, error) {
+	for host := range dns01.UnFqdnDomainsSeq(fqdn) {
+		id, err := d.client.GetDomainID(ctx, host)
+		if err != nil {
+			continue
+		}
+
+		return id, nil
+	}
+
+	return 0, errors.New("domain not found")
+}
+
+func (d *DNSProvider) findRecordID(ctx context.Context, domainID int, name string) (int, error) {
+	records, err := d.client.GetRecords(ctx, domainID)
+	if err != nil {
+		return 0, fmt.Errorf("get records: %w", err)
+	}
+
+	for _, r := range records {
+		if r.Name == name && r.RecordType == "TXT" {
+			return r.RecordID, nil
+		}
+	}
+
+	return 0, errors.New("record not found")
 }

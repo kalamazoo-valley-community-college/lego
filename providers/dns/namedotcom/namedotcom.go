@@ -10,6 +10,7 @@ import (
 	"github.com/go-acme/lego/v4/challenge"
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/platform/config/env"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 	"github.com/namedotcom/go/v4/namecom"
 )
 
@@ -97,7 +98,12 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 	}
 
 	client := namecom.New(config.Username, config.APIToken)
-	client.Client = config.HTTPClient
+
+	if config.HTTPClient != nil {
+		client.Client = config.HTTPClient
+	}
+
+	client.Client = clientdebug.Wrap(client.Client)
 
 	if config.Server != "" {
 		client.Server = config.Server
@@ -155,6 +161,7 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 				DomainName: domain,
 				ID:         rec.ID,
 			}
+
 			_, err := d.client.DeleteRecord(request)
 			if err != nil {
 				return fmt.Errorf("namedotcom: %w", err)
@@ -178,6 +185,7 @@ func (d *DNSProvider) getRecords(domain string) ([]*namecom.Record, error) {
 	}
 
 	var records []*namecom.Record
+
 	for request.Page > 0 {
 		response, err := d.client.ListRecords(request)
 		if err != nil {

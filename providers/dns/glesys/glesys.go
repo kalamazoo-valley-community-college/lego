@@ -13,6 +13,7 @@ import (
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/platform/config/env"
 	"github.com/go-acme/lego/v4/providers/dns/glesys/internal"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 )
 
 // Environment variables names.
@@ -99,6 +100,8 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 		client.HTTPClient = config.HTTPClient
 	}
 
+	client.HTTPClient = clientdebug.Wrap(client.HTTPClient)
+
 	return &DNSProvider{
 		config:        config,
 		client:        client,
@@ -133,6 +136,7 @@ func (d *DNSProvider) Present(domain, token, keyAuth string) error {
 
 	// save data necessary for CleanUp
 	d.activeRecords[info.EffectiveFQDN] = recordID
+
 	return nil
 }
 
@@ -143,6 +147,7 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 	// acquire lock and retrieve authZone
 	d.inProgressMu.Lock()
 	defer d.inProgressMu.Unlock()
+
 	if _, ok := d.activeRecords[info.EffectiveFQDN]; !ok {
 		// if there is no cleanup information then just return
 		return nil

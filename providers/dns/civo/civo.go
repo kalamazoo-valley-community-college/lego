@@ -12,6 +12,7 @@ import (
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/platform/config/env"
 	"github.com/go-acme/lego/v4/providers/dns/civo/internal"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 )
 
 // Environment variables names.
@@ -91,7 +92,11 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 	}
 
 	// Create a Civo client - DNS is region independent, we can use any region
-	client, err := internal.NewClient(internal.OAuthStaticAccessToken(config.HTTPClient, config.Token), "LON1")
+	client, err := internal.NewClient(
+		clientdebug.Wrap(
+			internal.OAuthStaticAccessToken(config.HTTPClient, config.Token),
+		),
+		"LON1")
 	if err != nil {
 		return nil, fmt.Errorf("civo: %w", err)
 	}
@@ -164,6 +169,7 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 	}
 
 	var dnsRecord internal.Record
+
 	for _, entry := range dnsRecords {
 		if entry.Name == subDomain && entry.Value == info.Value {
 			dnsRecord = entry

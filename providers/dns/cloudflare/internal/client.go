@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 	"github.com/go-acme/lego/v4/providers/dns/internal/errutils"
 	"github.com/go-acme/lego/v4/providers/dns/internal/useragent"
 )
@@ -61,6 +62,8 @@ func NewClient(opts ...Option) (*Client, error) {
 		return nil, errors.New("invalid credentials: authEmail and authKey must be set together")
 	}
 
+	client.HTTPClient = clientdebug.Wrap(client.HTTPClient)
+
 	return client, nil
 }
 
@@ -84,7 +87,7 @@ func (c *Client) CreateDNSRecord(ctx context.Context, zoneID string, record Reco
 	return &result.Result, nil
 }
 
-// DeleteDNSRecord Delete DNS record.
+// DeleteDNSRecord deletes DNS record.
 // https://developers.cloudflare.com/api/resources/dns/subresources/records/methods/delete/
 func (c *Client) DeleteDNSRecord(ctx context.Context, zoneID, recordID string) error {
 	endpoint := c.baseURL.JoinPath("zones", zoneID, "dns_records", recordID)
@@ -97,6 +100,7 @@ func (c *Client) DeleteDNSRecord(ctx context.Context, zoneID, recordID string) e
 	return c.do(req, nil)
 }
 
+// ZonesByName returns a list of zones matching the given name.
 // https://developers.cloudflare.com/api/resources/zones/methods/list/
 func (c *Client) ZonesByName(ctx context.Context, name string) ([]Zone, error) {
 	endpoint := c.baseURL.JoinPath("zones")
@@ -188,6 +192,7 @@ func parseError(req *http.Request, resp *http.Response) error {
 	raw, _ := io.ReadAll(resp.Body)
 
 	var response APIResponse[any]
+
 	err := json.Unmarshal(raw, &response)
 	if err != nil {
 		return errutils.NewUnexpectedStatusCodeError(req, resp.StatusCode, raw)

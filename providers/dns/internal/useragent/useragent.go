@@ -10,7 +10,7 @@ import (
 
 const (
 	// ourUserAgent is the User-Agent of this underlying library package.
-	ourUserAgent = "goacme-lego/4.26.0"
+	ourUserAgent = "goacme-lego/4.28.1"
 
 	// ourUserAgentComment is part of the UA comment linked to the version status of this underlying library package.
 	// values: detach|release

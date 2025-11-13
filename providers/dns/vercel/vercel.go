@@ -12,6 +12,7 @@ import (
 	"github.com/go-acme/lego/v4/challenge"
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/platform/config/env"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 	"github.com/go-acme/lego/v4/providers/dns/vercel/internal"
 )
 
@@ -86,7 +87,12 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 		return nil, errors.New("vercel: credentials missing")
 	}
 
-	client := internal.NewClient(internal.OAuthStaticAccessToken(config.HTTPClient, config.AuthToken), config.TeamID)
+	client := internal.NewClient(
+		clientdebug.Wrap(
+			internal.OAuthStaticAccessToken(config.HTTPClient, config.AuthToken),
+		),
+		config.TeamID,
+	)
 
 	return &DNSProvider{
 		config:    config,
@@ -142,6 +148,7 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 	d.recordIDsMu.Lock()
 	recordID, ok := d.recordIDs[token]
 	d.recordIDsMu.Unlock()
+
 	if !ok {
 		return fmt.Errorf("vercel: unknown record ID for '%s'", info.EffectiveFQDN)
 	}

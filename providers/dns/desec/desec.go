@@ -12,6 +12,7 @@ import (
 	"github.com/go-acme/lego/v4/challenge"
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/platform/config/env"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 	"github.com/nrdcg/desec"
 )
 
@@ -88,6 +89,9 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 	if config.HTTPClient != nil {
 		opts.HTTPClient = config.HTTPClient
 	}
+
+	opts.HTTPClient = clientdebug.Wrap(opts.HTTPClient)
+
 	opts.Logger = log.Default()
 
 	client := desec.New(config.Token, opts)
@@ -176,6 +180,7 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 	}
 
 	records := make([]string, 0)
+
 	for _, record := range rrSet.Records {
 		if record != fmt.Sprintf(`%q`, info.Value) {
 			records = append(records, record)

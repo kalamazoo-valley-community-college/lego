@@ -11,6 +11,7 @@ import (
 	"github.com/go-acme/lego/v4/challenge"
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/platform/config/env"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 	"github.com/go-acme/lego/v4/providers/dns/mijnhost/internal"
 )
 
@@ -86,6 +87,12 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 
 	client := internal.NewClient(config.APIKey)
 
+	if config.HTTPClient != nil {
+		client.HTTPClient = config.HTTPClient
+	}
+
+	client.HTTPClient = clientdebug.Wrap(client.HTTPClient)
+
 	return &DNSProvider{
 		config: config,
 		client: client,
@@ -106,9 +113,11 @@ func (d *DNSProvider) Sequential() time.Duration {
 
 // Present creates a TXT record to fulfill the dns-01 challenge.
 func (d *DNSProvider) Present(domain, token, keyAuth string) error {
+	ctx := context.Background()
+
 	info := dns01.GetChallengeInfo(domain, keyAuth)
 
-	domains, err := d.client.ListDomains(context.Background())
+	domains, err := d.client.ListDomains(ctx)
 	if err != nil {
 		return fmt.Errorf("mijnhost: list domains: %w", err)
 	}
@@ -118,7 +127,7 @@ func (d *DNSProvider) Present(domain, token, keyAuth string) error {
 		return fmt.Errorf("mijnhost: find domain: %w", err)
 	}
 
-	records, err := d.client.GetRecords(context.Background(), dom.Domain)
+	records, err := d.client.GetRecords(ctx, dom.Domain)
 	if err != nil {
 		return fmt.Errorf("mijnhost: get records: %w", err)
 	}
@@ -143,7 +152,7 @@ func (d *DNSProvider) Present(domain, token, keyAuth string) error {
 
 	cleanedRecords = append(cleanedRecords, record)
 
-	err = d.client.UpdateRecords(context.Background(), dom.Domain, cleanedRecords)
+	err = d.client.UpdateRecords(ctx, dom.Domain, cleanedRecords)
 	if err != nil {
 		return fmt.Errorf("mijnhost: update records: %w", err)
 	}
@@ -153,9 +162,11 @@ func (d *DNSProvider) Present(domain, token, keyAuth string) error {
 
 // CleanUp removes the TXT record.
 func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
+	ctx := context.Background()
+
 	info := dns01.GetChallengeInfo(domain, keyAuth)
 
-	domains, err := d.client.ListDomains(context.Background())
+	domains, err := d.client.ListDomains(ctx)
 	if err != nil {
 		return fmt.Errorf("mijnhost: list domains: %w", err)
 	}
@@ -165,7 +176,7 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 		return fmt.Errorf("mijnhost: find domain: %w", err)
 	}
 
-	records, err := d.client.GetRecords(context.Background(), dom.Domain)
+	records, err := d.client.GetRecords(ctx, dom.Domain)
 	if err != nil {
 		return fmt.Errorf("mijnhost: get records: %w", err)
 	}
@@ -174,7 +185,7 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 		return record.Type == txtType && record.Value == info.Value
 	})
 
-	err = d.client.UpdateRecords(context.Background(), dom.Domain, cleanedRecords)
+	err = d.client.UpdateRecords(ctx, dom.Domain, cleanedRecords)
 	if err != nil {
 		return fmt.Errorf("mijnhost: update records: %w", err)
 	}

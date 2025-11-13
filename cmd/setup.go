@@ -1,14 +1,18 @@
 package cmd
 
 import (
+	"context"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/go-acme/lego/v4/acme"
 	"github.com/go-acme/lego/v4/certcrypto"
 	"github.com/go-acme/lego/v4/lego"
 	"github.com/go-acme/lego/v4/log"
@@ -70,6 +74,7 @@ func newClient(ctx *cli.Context, acc registration.User, keyType certcrypto.KeyTy
 	retryClient := retryablehttp.NewClient()
 	retryClient.RetryMax = 5
 	retryClient.HTTPClient = config.HTTPClient
+	retryClient.CheckRetry = checkRetry
 	retryClient.Logger = nil
 
 	if _, v := os.LookupEnv("LEGO_DEBUG_ACME_HTTP_CLIENT"); v {
@@ -109,6 +114,7 @@ func getKeyType(ctx *cli.Context) certcrypto.KeyType {
 	}
 
 	log.Fatalf("Unsupported KeyType: %s", keyType)
+
 	return ""
 }
 
@@ -117,6 +123,7 @@ func getEmail(ctx *cli.Context) string {
 	if email == "" {
 		log.Fatalf("You have to pass an account (email address) to the program using --%s or -m", flgEmail)
 	}
+
 	return email
 }
 
@@ -130,6 +137,7 @@ func createNonExistingFolder(path string) error {
 	} else if err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -138,10 +146,12 @@ func readCSRFile(filename string) (*x509.CertificateRequest, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	raw := bytes
 
 	// see if we can find a PEM-encoded CSR
 	var p *pem.Block
+
 	rest := bytes
 	for {
 		// decode a PEM block
@@ -162,4 +172,50 @@ func readCSRFile(filename string) (*x509.CertificateRequest, error) {
 	// assume we were given a DER-encoded ASN.1 CSR
 	// (if this assumption is wrong, parsing these bytes will fail)
 	return x509.ParseCertificateRequest(raw)
+}
+
+func checkRetry(ctx context.Context, resp *http.Response, err error) (bool, error) {
+	rt, err := retryablehttp.ErrorPropagatedRetryPolicy(ctx, resp, err)
+	if err != nil {
+		return rt, err
+	}
+
+	if resp == nil {
+		return rt, nil
+	}
+
+	if resp.StatusCode/100 == 2 {
+		return rt, nil
+	}
+
+	all, err := io.ReadAll(resp.Body)
+	if err == nil {
+		var errorDetails *acme.ProblemDetails
+
+		err = json.Unmarshal(all, &errorDetails)
+		if err != nil {
+			return rt, fmt.Errorf("%s %s: %s", resp.Request.Method, resp.Request.URL.Redacted(), string(all))
+		}
+
+		switch errorDetails.Type {
+		case acme.BadNonceErr:
+			return false, &acme.NonceError{
+				ProblemDetails: errorDetails,
+			}
+
+		case acme.AlreadyReplacedErr:
+			if errorDetails.HTTPStatus == http.StatusConflict {
+				return false, &acme.AlreadyReplacedError{
+					ProblemDetails: errorDetails,
+				}
+			}
+
+		default:
+			log.Warnf("retry: %v", errorDetails)
+
+			return rt, errorDetails
+		}
+	}
+
+	return rt, nil
 }

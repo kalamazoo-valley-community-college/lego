@@ -24,12 +24,12 @@ type Client struct {
 }
 
 // NewClient creates a new Client.
-func NewClient(ctx context.Context, clientID, clientSecret string) *Client {
+func NewClient(hc *http.Client) *Client {
 	baseURL, _ := url.Parse(defaultBaseURL)
 
 	return &Client{
 		baseURL:    baseURL,
-		httpClient: createOAuthClient(ctx, clientID, clientSecret),
+		httpClient: hc,
 	}
 }
 
@@ -109,6 +109,7 @@ func (c *Client) UpdateZoneRecord(ctx context.Context, record ZoneRecord) error 
 	if record.SpfTxtDomainID == 0 {
 		return errors.New("SpfTxtDomainID is empty")
 	}
+
 	if record.ZoneID == 0 {
 		return errors.New("ZoneID is empty")
 	}
@@ -188,6 +189,7 @@ func parseError(req *http.Request, resp *http.Response) error {
 	raw, _ := io.ReadAll(resp.Body)
 
 	var errAPI APIError
+
 	err := json.Unmarshal(raw, &errAPI)
 	if err != nil {
 		return errutils.NewUnexpectedStatusCodeError(req, resp.StatusCode, raw)

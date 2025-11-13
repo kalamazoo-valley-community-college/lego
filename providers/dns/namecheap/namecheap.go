@@ -14,6 +14,7 @@ import (
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/log"
 	"github.com/go-acme/lego/v4/platform/config/env"
+	"github.com/go-acme/lego/v4/providers/dns/internal/clientdebug"
 	"github.com/go-acme/lego/v4/providers/dns/namecheap/internal"
 	"golang.org/x/net/publicsuffix"
 )
@@ -117,6 +118,7 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 		if err != nil {
 			return nil, fmt.Errorf("namecheap: %w", err)
 		}
+
 		config.ClientIP = clientIP
 	}
 
@@ -126,6 +128,8 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 	if config.HTTPClient != nil {
 		client.HTTPClient = config.HTTPClient
 	}
+
+	client.HTTPClient = clientdebug.Wrap(client.HTTPClient)
 
 	return &DNSProvider{config: config, client: client}, nil
 }
@@ -171,6 +175,7 @@ func (d *DNSProvider) Present(domain, token, keyAuth string) error {
 	if err != nil {
 		return fmt.Errorf("namecheap: %w", err)
 	}
+
 	return nil
 }
 
@@ -190,8 +195,11 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 	}
 
 	// Find the challenge TXT record and remove it if found.
-	var found bool
-	var newRecords []internal.Record
+	var (
+		found      bool
+		newRecords []internal.Record
+	)
+
 	for _, h := range records {
 		if h.Name == pr.key && h.Type == "TXT" {
 			found = true
@@ -208,6 +216,7 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 	if err != nil {
 		return fmt.Errorf("namecheap: %w", err)
 	}
+
 	return nil
 }
 

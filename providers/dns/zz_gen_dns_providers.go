@@ -11,6 +11,7 @@ import (
 	"github.com/go-acme/lego/v4/providers/dns/active24"
 	"github.com/go-acme/lego/v4/providers/dns/alidns"
 	"github.com/go-acme/lego/v4/providers/dns/allinkl"
+	"github.com/go-acme/lego/v4/providers/dns/anexia"
 	"github.com/go-acme/lego/v4/providers/dns/arvancloud"
 	"github.com/go-acme/lego/v4/providers/dns/auroradns"
 	"github.com/go-acme/lego/v4/providers/dns/autodns"
@@ -19,6 +20,7 @@ import (
 	"github.com/go-acme/lego/v4/providers/dns/azure"
 	"github.com/go-acme/lego/v4/providers/dns/azuredns"
 	"github.com/go-acme/lego/v4/providers/dns/baiducloud"
+	"github.com/go-acme/lego/v4/providers/dns/beget"
 	"github.com/go-acme/lego/v4/providers/dns/binarylane"
 	"github.com/go-acme/lego/v4/providers/dns/bindman"
 	"github.com/go-acme/lego/v4/providers/dns/bluecat"
@@ -54,6 +56,7 @@ import (
 	"github.com/go-acme/lego/v4/providers/dns/dyndnsfree"
 	"github.com/go-acme/lego/v4/providers/dns/dynu"
 	"github.com/go-acme/lego/v4/providers/dns/easydns"
+	"github.com/go-acme/lego/v4/providers/dns/edgecenter"
 	"github.com/go-acme/lego/v4/providers/dns/edgedns"
 	"github.com/go-acme/lego/v4/providers/dns/edgeone"
 	"github.com/go-acme/lego/v4/providers/dns/efficientip"
@@ -71,6 +74,7 @@ import (
 	"github.com/go-acme/lego/v4/providers/dns/googledomains"
 	"github.com/go-acme/lego/v4/providers/dns/hetzner"
 	"github.com/go-acme/lego/v4/providers/dns/hostingde"
+	"github.com/go-acme/lego/v4/providers/dns/hostinger"
 	"github.com/go-acme/lego/v4/providers/dns/hosttech"
 	"github.com/go-acme/lego/v4/providers/dns/httpnet"
 	"github.com/go-acme/lego/v4/providers/dns/httpreq"
@@ -117,6 +121,7 @@ import (
 	"github.com/go-acme/lego/v4/providers/dns/njalla"
 	"github.com/go-acme/lego/v4/providers/dns/nodion"
 	"github.com/go-acme/lego/v4/providers/dns/ns1"
+	"github.com/go-acme/lego/v4/providers/dns/octenium"
 	"github.com/go-acme/lego/v4/providers/dns/oraclecloud"
 	"github.com/go-acme/lego/v4/providers/dns/otc"
 	"github.com/go-acme/lego/v4/providers/dns/ovh"
@@ -158,6 +163,7 @@ import (
 	"github.com/go-acme/lego/v4/providers/dns/vscale"
 	"github.com/go-acme/lego/v4/providers/dns/vultr"
 	"github.com/go-acme/lego/v4/providers/dns/webnames"
+	"github.com/go-acme/lego/v4/providers/dns/webnamesca"
 	"github.com/go-acme/lego/v4/providers/dns/websupport"
 	"github.com/go-acme/lego/v4/providers/dns/wedos"
 	"github.com/go-acme/lego/v4/providers/dns/westcn"
@@ -182,6 +188,8 @@ func NewDNSChallengeProviderByName(name string) (challenge.Provider, error) {
 		return alidns.NewDNSProvider()
 	case "allinkl":
 		return allinkl.NewDNSProvider()
+	case "anexia":
+		return anexia.NewDNSProvider()
 	case "arvancloud":
 		return arvancloud.NewDNSProvider()
 	case "auroradns":
@@ -198,6 +206,8 @@ func NewDNSChallengeProviderByName(name string) (challenge.Provider, error) {
 		return azuredns.NewDNSProvider()
 	case "baiducloud":
 		return baiducloud.NewDNSProvider()
+	case "beget":
+		return beget.NewDNSProvider()
 	case "binarylane":
 		return binarylane.NewDNSProvider()
 	case "bindman":
@@ -268,6 +278,8 @@ func NewDNSChallengeProviderByName(name string) (challenge.Provider, error) {
 		return dynu.NewDNSProvider()
 	case "easydns":
 		return easydns.NewDNSProvider()
+	case "edgecenter":
+		return edgecenter.NewDNSProvider()
 	case "edgedns", "fastdns":
 		return edgedns.NewDNSProvider()
 	case "edgeone":
@@ -302,6 +314,8 @@ func NewDNSChallengeProviderByName(name string) (challenge.Provider, error) {
 		return hetzner.NewDNSProvider()
 	case "hostingde":
 		return hostingde.NewDNSProvider()
+	case "hostinger":
+		return hostinger.NewDNSProvider()
 	case "hosttech":
 		return hosttech.NewDNSProvider()
 	case "httpnet":
@@ -394,6 +408,8 @@ func NewDNSChallengeProviderByName(name string) (challenge.Provider, error) {
 		return nodion.NewDNSProvider()
 	case "ns1":
 		return ns1.NewDNSProvider()
+	case "octenium":
+		return octenium.NewDNSProvider()
 	case "oraclecloud":
 		return oraclecloud.NewDNSProvider()
 	case "otc":
@@ -474,8 +490,10 @@ func NewDNSChallengeProviderByName(name string) (challenge.Provider, error) {
 		return vscale.NewDNSProvider()
 	case "vultr":
 		return vultr.NewDNSProvider()
-	case "webnames":
+	case "webnames", "webnamesru":
 		return webnames.NewDNSProvider()
+	case "webnamesca":
+		return webnamesca.NewDNSProvider()
 	case "websupport":
 		return websupport.NewDNSProvider()
 	case "wedos":
